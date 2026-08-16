@@ -1,0 +1,844 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KDE & Histogram Visualizer</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- SheetJS (XLSX & CSV parser) -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', system-ui, -apple-system, sans-serif; }
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #f1f5f9; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    </style>
+</head>
+<body class="bg-slate-100 text-slate-800 min-h-screen flex flex-col">
+
+    <!-- Header -->
+    <header class="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <div class="bg-indigo-600 text-white p-2 rounded-xl shadow-md">
+                    <i data-lucide="bar-chart-3" class="w-6 h-6"></i>
+                </div>
+                <div>
+                    <h1 class="text-lg font-bold text-slate-900 leading-tight">KDE &amp; 히스토그램 시각화</h1>
+                    <p class="text-xs text-slate-500">데이터 분포 분석 및 확률밀도추정 도구</p>
+                </div>
+            </div>
+            <div class="flex items-center gap-2">
+                <button id="btn-sample-data" class="px-3.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-medium text-xs rounded-lg transition flex items-center gap-1.5 border border-indigo-200 shadow-sm">
+                    <i data-lucide="sparkles" class="w-3.5 h-3.5 text-indigo-600"></i>
+                    <span>샘플 데이터 사용</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Workspace -->
+    <main class="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+        <!-- Left Controls Sidebar (4 cols) -->
+        <aside class="lg:col-span-4 space-y-5">
+            
+            <!-- File Upload Box -->
+            <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+                <h2 class="text-xs font-bold text-slate-900 uppercase tracking-wider mb-3 flex items-center gap-2">
+                    <i data-lucide="upload-cloud" class="w-4 h-4 text-indigo-600"></i>
+                    데이터 파일 업로드
+                </h2>
+                
+                <div id="drop-zone" class="border-2 border-dashed border-slate-300 hover:border-indigo-500 bg-slate-50 hover:bg-indigo-50/50 rounded-xl p-5 text-center cursor-pointer transition flex flex-col items-center justify-center min-h-[120px]">
+                    <i data-lucide="file-spreadsheet" class="w-8 h-8 text-slate-400 mb-2"></i>
+                    <p class="text-xs font-semibold text-slate-700">클릭하거나 파일을 드래그하세요</p>
+                    <p class="text-[11px] text-slate-400 mt-1">.csv, .xlsx, .xls 파일 지원</p>
+                    <input type="file" id="file-input" accept=".xlsx, .xls, .csv" class="hidden">
+                </div>
+
+                <div id="file-info" class="hidden mt-3 p-2.5 bg-emerald-50 border border-emerald-200 rounded-lg flex items-center justify-between text-xs text-emerald-800">
+                    <div class="flex items-center gap-2 truncate">
+                        <i data-lucide="file-check" class="w-4 h-4 text-emerald-600 shrink-0"></i>
+                        <span id="file-name" class="font-medium truncate">file.csv</span>
+                    </div>
+                    <span id="file-size" class="text-emerald-600 text-[10px] shrink-0">0 KB</span>
+                </div>
+
+                <!-- CSV Encoding Setting -->
+                <div class="mt-3 pt-3 border-t border-slate-100">
+                    <label class="block text-[11px] font-semibold text-slate-600 mb-1.5 flex items-center justify-between">
+                        <span>CSV 인코딩 (한글 깨짐 해결)</span>
+                        <span class="text-[10px] text-indigo-600 font-normal">자동 인식 지원</span>
+                    </label>
+                    <select id="select-encoding" class="w-full bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-700 focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                        <option value="auto" selected>자동 감지 (EUC-KR / UTF-8)</option>
+                        <option value="euc-kr">EUC-KR / CP949 (Windows Excel 기본)</option>
+                        <option value="utf-8">UTF-8 (유니코드)</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Configuration Controls -->
+            <div id="controls-panel" class="bg-white rounded-xl shadow-sm border border-slate-200 p-5 space-y-4">
+                <h2 class="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2 border-b border-slate-100 pb-2">
+                    <i data-lucide="sliders" class="w-4 h-4 text-indigo-600"></i>
+                    시각화 설정
+                </h2>
+
+                <!-- Excel Sheet Selector (Hidden by default) -->
+                <div id="sheet-selector-wrapper" class="hidden">
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">워크시트 선택</label>
+                    <select id="select-sheet" class="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-1.5 text-xs text-slate-800 focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                    </select>
+                </div>
+
+                <!-- Target Numeric Column -->
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">수치형 열 (X축 데이터)</label>
+                    <select id="select-num-col" class="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-1.5 text-xs text-slate-800 focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                        <option value="">데이터를 업로드하세요</option>
+                    </select>
+                </div>
+
+                <!-- Grouping Column (Optional) -->
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">그룹화 범주 열 (선택)</label>
+                    <select id="select-group-col" class="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-1.5 text-xs text-slate-800 focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                        <option value="">그룹 없음 (전체 데이터)</option>
+                    </select>
+                </div>
+
+                <!-- Histogram Bins Slider -->
+                <div>
+                    <div class="flex justify-between text-xs font-semibold text-slate-700 mb-1">
+                        <span>히스토그램 구간(Bins) 수</span>
+                        <span id="bin-count-val" class="text-indigo-600 font-bold">20</span>
+                    </div>
+                    <input type="range" id="input-bins" min="5" max="100" value="20" class="w-full accent-indigo-600 cursor-pointer">
+                </div>
+
+                <!-- KDE Bandwidth Multiplier -->
+                <div>
+                    <div class="flex justify-between text-xs font-semibold text-slate-700 mb-1">
+                        <span>KDE 평활도 (Bandwidth)</span>
+                        <span id="bw-val" class="text-indigo-600 font-bold">1.0x</span>
+                    </div>
+                    <input type="range" id="input-bw" min="0.2" max="3.0" step="0.1" value="1.0" class="w-full accent-indigo-600 cursor-pointer">
+                    <p class="text-[10px] text-slate-400 mt-0.5">Silverman 규칙 기반 자동 대역폭 조정</p>
+                </div>
+
+                <!-- Display Toggles -->
+                <div class="space-y-2 pt-2 border-t border-slate-100 text-xs">
+                    <label class="flex items-center gap-2 cursor-pointer text-slate-700 font-medium">
+                        <input type="checkbox" id="chk-show-hist" checked class="rounded text-indigo-600 focus:ring-indigo-500 h-4 w-4">
+                        <span>히스토그램 막대 표시</span>
+                    </label>
+                    <label class="flex items-center gap-2 cursor-pointer text-slate-700 font-medium">
+                        <input type="checkbox" id="chk-show-kde" checked class="rounded text-indigo-600 focus:ring-indigo-500 h-4 w-4">
+                        <span>KDE 곡선 표시</span>
+                    </label>
+                    <label class="flex items-center gap-2 cursor-pointer text-slate-700 font-medium">
+                        <input type="checkbox" id="chk-show-mean" checked class="rounded text-indigo-600 focus:ring-indigo-500 h-4 w-4">
+                        <span>평균값(Mean) 수직선</span>
+                    </label>
+                    <label class="flex items-center gap-2 cursor-pointer text-slate-700 font-medium">
+                        <input type="checkbox" id="chk-show-median" checked class="rounded text-indigo-600 focus:ring-indigo-500 h-4 w-4">
+                        <span>중앙값(Median) 수직선</span>
+                    </label>
+                </div>
+
+                <!-- Color Palette -->
+                <div class="pt-2 border-t border-slate-100">
+                    <label class="block text-xs font-semibold text-slate-700 mb-2">테마 색상</label>
+                    <div class="flex items-center gap-2" id="color-palette">
+                        <button data-color="#6366f1" class="w-6 h-6 rounded-full bg-indigo-500 ring-2 ring-offset-1 ring-indigo-500 cursor-pointer transition"></button>
+                        <button data-color="#06b6d4" class="w-6 h-6 rounded-full bg-cyan-500 hover:ring-2 hover:ring-offset-1 hover:ring-cyan-500 cursor-pointer transition"></button>
+                        <button data-color="#10b981" class="w-6 h-6 rounded-full bg-emerald-500 hover:ring-2 hover:ring-offset-1 hover:ring-emerald-500 cursor-pointer transition"></button>
+                        <button data-color="#f59e0b" class="w-6 h-6 rounded-full bg-amber-500 hover:ring-2 hover:ring-offset-1 hover:ring-amber-500 cursor-pointer transition"></button>
+                        <button data-color="#ec4899" class="w-6 h-6 rounded-full bg-ping-500 hover:ring-2 hover:ring-offset-1 hover:ring-pink-500 cursor-pointer transition" style="background-color:#ec4899;"></button>
+                    </div>
+                </div>
+
+            </div>
+        </aside>
+
+        <!-- Right Main Content Display (8 cols) -->
+        <section class="lg:col-span-8 space-y-6">
+
+            <!-- Navigation Tabs -->
+            <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-1.5 flex items-center justify-between">
+                <div class="flex items-center gap-1">
+                    <button id="tab-btn-chart" class="px-4 py-2 text-xs font-semibold rounded-lg bg-indigo-50 text-indigo-700 transition flex items-center gap-1.5">
+                        <i data-lucide="line-chart" class="w-4 h-4"></i>
+                        <span>시각화 차트</span>
+                    </button>
+                    <button id="tab-btn-stats" class="px-4 py-2 text-xs font-semibold rounded-lg text-slate-600 hover:bg-slate-100 transition flex items-center gap-1.5">
+                        <i data-lucide="calculator" class="w-4 h-4"></i>
+                        <span>요약 통계량</span>
+                    </button>
+                    <button id="tab-btn-data" class="px-4 py-2 text-xs font-semibold rounded-lg text-slate-600 hover:bg-slate-100 transition flex items-center gap-1.5">
+                        <i data-lucide="table" class="w-4 h-4"></i>
+                        <span>데이터 미리보기</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Tab 1: Chart Section -->
+            <div id="tab-content-chart" class="bg-white rounded-xl shadow-sm border border-slate-200 p-5 space-y-4">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h2 id="chart-title" class="text-base font-bold text-slate-900">분포 차트</h2>
+                        <p id="chart-subtitle" class="text-xs text-slate-500">데이터를 업로드하면 히스토그램과 KDE 분포가 표시됩니다.</p>
+                    </div>
+                </div>
+
+                <div class="relative w-full h-[450px] bg-slate-50 rounded-lg p-2 flex items-center justify-center border border-slate-100">
+                    <canvas id="main-chart"></canvas>
+                </div>
+            </div>
+
+            <!-- Tab 2: Summary Stats Section -->
+            <div id="tab-content-stats" class="hidden space-y-4">
+                <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+                    <h2 class="text-sm font-bold text-slate-900 mb-4 flex items-center gap-2">
+                        <i data-lucide="pie-chart" class="w-4 h-4 text-indigo-600"></i>
+                        기술 통계 요약 (Descriptive Statistics)
+                    </h2>
+                    
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3" id="stats-cards">
+                        <!-- Stats cards injected via JS -->
+                        <div class="p-3 bg-slate-50 rounded-lg border border-slate-200 text-center">
+                            <span class="text-[11px] text-slate-500 block">데이터 개수 (N)</span>
+                            <span class="text-base font-bold text-slate-800" id="stat-count">-</span>
+                        </div>
+                        <div class="p-3 bg-slate-50 rounded-lg border border-slate-200 text-center">
+                            <span class="text-[11px] text-slate-500 block">평균 (Mean)</span>
+                            <span class="text-base font-bold text-indigo-600" id="stat-mean">-</span>
+                        </div>
+                        <div class="p-3 bg-slate-50 rounded-lg border border-slate-200 text-center">
+                            <span class="text-[11px] text-slate-500 block">중앙값 (Median)</span>
+                            <span class="text-base font-bold text-emerald-600" id="stat-median">-</span>
+                        </div>
+                        <div class="p-3 bg-slate-50 rounded-lg border border-slate-200 text-center">
+                            <span class="text-[11px] text-slate-500 block">표준편차 (Std Dev)</span>
+                            <span class="text-base font-bold text-slate-800" id="stat-std">-</span>
+                        </div>
+                        <div class="p-3 bg-slate-50 rounded-lg border border-slate-200 text-center">
+                            <span class="text-[11px] text-slate-500 block">최솟값 (Min)</span>
+                            <span class="text-base font-bold text-slate-800" id="stat-min">-</span>
+                        </div>
+                        <div class="p-3 bg-slate-50 rounded-lg border border-slate-200 text-center">
+                            <span class="text-[11px] text-slate-500 block">최댓값 (Max)</span>
+                            <span class="text-base font-bold text-slate-800" id="stat-max">-</span>
+                        </div>
+                        <div class="p-3 bg-slate-50 rounded-lg border border-slate-200 text-center">
+                            <span class="text-[11px] text-slate-500 block">왜도 (Skewness)</span>
+                            <span class="text-base font-bold text-slate-800" id="stat-skew">-</span>
+                        </div>
+                        <div class="p-3 bg-slate-50 rounded-lg border border-slate-200 text-center">
+                            <span class="text-[11px] text-slate-500 block">첨도 (Kurtosis)</span>
+                            <span class="text-base font-bold text-slate-800" id="stat-kurt">-</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tab 3: Raw Data Preview -->
+            <div id="tab-content-data" class="hidden bg-white rounded-xl shadow-sm border border-slate-200 p-5 space-y-4">
+                <div class="flex items-center justify-between">
+                    <h2 class="text-sm font-bold text-slate-900">원본 데이터 목록 (최대 100행 표시)</h2>
+                    <span id="data-row-count" class="text-xs text-slate-500">0행</span>
+                </div>
+                <div class="overflow-x-auto max-h-[400px] border border-slate-200 rounded-lg">
+                    <table class="w-full text-xs text-left text-slate-700" id="raw-data-table">
+                        <thead class="bg-slate-100 text-slate-700 uppercase font-semibold sticky top-0">
+                            <tr id="table-head-row">
+                                <th class="px-4 py-2.5">#</th>
+                            </tr>
+                        </thead>
+                        <tbody id="table-body-rows" class="divide-y divide-slate-200">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+        </section>
+    </main>
+
+    <!-- JavaScript Application Logic -->
+    <script>
+        let rawWorkbook = null;
+        let parsedData = [];
+        let availableColumns = [];
+        let numericColumns = [];
+        let categoricalColumns = [];
+        let currentColor = '#6366f1';
+        let currentTab = 'chart';
+        let currentFileBuffer = null;
+        let currentFileName = '';
+        let chartInstance = null;
+
+        // DOM Elements
+        const dropZone = document.getElementById('drop-zone');
+        const fileInput = document.getElementById('file-input');
+        const fileInfo = document.getElementById('file-info');
+        const fileNameEl = document.getElementById('file-name');
+        const fileSizeEl = document.getElementById('file-size');
+        const selectEncoding = document.getElementById('select-encoding');
+        const btnSampleData = document.getElementById('btn-sample-data');
+
+        const selectSheet = document.getElementById('select-sheet');
+        const sheetSelectorWrapper = document.getElementById('sheet-selector-wrapper');
+        const selectNumCol = document.getElementById('select-num-col');
+        const selectGroupCol = document.getElementById('select-group-col');
+        const inputBins = document.getElementById('input-bins');
+        const binCountVal = document.getElementById('bin-count-val');
+        const inputBw = document.getElementById('input-bw');
+        const bwVal = document.getElementById('bw-val');
+
+        const chkShowHist = document.getElementById('chk-show-hist');
+        const chkShowKde = document.getElementById('chk-show-kde');
+        const chkShowMean = document.getElementById('chk-show-mean');
+        const chkShowMedian = document.getElementById('chk-show-median');
+
+        const tabBtnChart = document.getElementById('tab-btn-chart');
+        const tabBtnStats = document.getElementById('tab-btn-stats');
+        const tabBtnData = document.getElementById('tab-btn-data');
+
+        const tabContentChart = document.getElementById('tab-content-chart');
+        const tabContentStats = document.getElementById('tab-content-stats');
+        const tabContentData = document.getElementById('tab-content-data');
+
+        // Initialize icons on load
+        window.addEventListener('DOMContentLoaded', () => {
+            if (window.lucide) lucide.createIcons();
+            setupEventListeners();
+            loadSampleData(); // Initial view with clean sample data
+        });
+
+        function setupEventListeners() {
+            // Drag and drop events
+            dropZone.addEventListener('click', () => fileInput.click());
+            dropZone.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                dropZone.classList.add('border-indigo-500', 'bg-indigo-50/50');
+            });
+            dropZone.addEventListener('dragleave', () => {
+                dropZone.classList.remove('border-indigo-500', 'bg-indigo-50/50');
+            });
+            dropZone.addEventListener('drop', (e) => {
+                e.preventDefault();
+                dropZone.classList.remove('border-indigo-500', 'bg-indigo-50/50');
+                if (e.dataTransfer.files.length > 0) {
+                    handleFileSelect(e.dataTransfer.files[0]);
+                }
+            });
+
+            fileInput.addEventListener('change', (e) => {
+                if (e.target.files.length > 0) {
+                    handleFileSelect(e.target.files[0]);
+                }
+            });
+
+            selectEncoding.addEventListener('change', () => {
+                if (currentFileBuffer) {
+                    processFileBuffer();
+                }
+            });
+
+            if (btnSampleData) {
+                btnSampleData.addEventListener('click', loadSampleData);
+            }
+
+            // Controls listeners
+            selectSheet.addEventListener('change', () => switchSheet(selectSheet.value));
+            selectNumCol.addEventListener('change', updateVisualization);
+            selectGroupCol.addEventListener('change', updateVisualization);
+
+            inputBins.addEventListener('input', (e) => {
+                binCountVal.textContent = e.target.value;
+                updateVisualization();
+            });
+
+            inputBw.addEventListener('input', (e) => {
+                bwVal.textContent = parseFloat(e.target.value).toFixed(1) + 'x';
+                updateVisualization();
+            });
+
+            [chkShowHist, chkShowKde, chkShowMean, chkShowMedian].forEach(chk => {
+                chk.addEventListener('change', updateVisualization);
+            });
+
+            // Color Palette
+            document.querySelectorAll('#color-palette button').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    document.querySelectorAll('#color-palette button').forEach(b => b.className = 'w-6 h-6 rounded-full hover:ring-2 hover:ring-offset-1 transition');
+                    e.currentTarget.className = 'w-6 h-6 rounded-full ring-2 ring-offset-1 ring-slate-800 transition';
+                    currentColor = e.currentTarget.getAttribute('data-color');
+                    updateVisualization();
+                });
+            });
+
+            // Tabs Switcher
+            tabBtnChart.addEventListener('click', () => switchTab('chart'));
+            tabBtnStats.addEventListener('click', () => switchTab('stats'));
+            tabBtnData.addEventListener('click', () => switchTab('data'));
+        }
+
+        function switchTab(tab) {
+            currentTab = tab;
+            [tabBtnChart, tabBtnStats, tabBtnData].forEach(btn => {
+                btn.className = 'px-4 py-2 text-xs font-semibold rounded-lg text-slate-600 hover:bg-slate-100 transition flex items-center gap-1.5';
+            });
+            [tabContentChart, tabContentStats, tabContentData].forEach(content => content.classList.add('hidden'));
+
+            if (tab === 'chart') {
+                tabBtnChart.className = 'px-4 py-2 text-xs font-semibold rounded-lg bg-indigo-50 text-indigo-700 transition flex items-center gap-1.5';
+                tabContentChart.classList.remove('hidden');
+            } else if (tab === 'stats') {
+                tabBtnStats.className = 'px-4 py-2 text-xs font-semibold rounded-lg bg-indigo-50 text-indigo-700 transition flex items-center gap-1.5';
+                tabContentStats.classList.remove('hidden');
+            } else if (tab === 'data') {
+                tabBtnData.className = 'px-4 py-2 text-xs font-semibold rounded-lg bg-indigo-50 text-indigo-700 transition flex items-center gap-1.5';
+                tabContentData.classList.remove('hidden');
+            }
+        }
+
+        function handleFileSelect(file) {
+            currentFileName = file.name;
+            fileNameEl.textContent = file.name;
+            fileSizeEl.textContent = (file.size / 1024).toFixed(1) + ' KB';
+            fileInfo.classList.remove('hidden');
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                currentFileBuffer = e.target.result;
+                processFileBuffer();
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        function decodeBufferToString(buffer, preference) {
+            const bytes = new Uint8Array(buffer);
+            
+            if (preference === 'utf-8') {
+                return new TextDecoder('utf-8').decode(bytes);
+            }
+            if (preference === 'euc-kr') {
+                return new TextDecoder('euc-kr').decode(bytes);
+            }
+
+            // Smart Auto Detection:
+            // Try decoding with strict UTF-8. If error occurs, fall back to EUC-KR (CP949).
+            try {
+                const decoder = new TextDecoder('utf-8', { fatal: true });
+                return decoder.decode(bytes);
+            } catch (err) {
+                const decoder = new TextDecoder('euc-kr');
+                return decoder.decode(bytes);
+            }
+        }
+
+        function processFileBuffer() {
+            if (!currentFileBuffer) return;
+            try {
+                const isCsv = currentFileName.toLowerCase().endsWith('.csv');
+                const pref = selectEncoding.value;
+
+                if (isCsv) {
+                    const decodedText = decodeBufferToString(currentFileBuffer, pref);
+                    rawWorkbook = XLSX.read(decodedText, { type: 'string' });
+                } else {
+                    rawWorkbook = XLSX.read(currentFileBuffer, { type: 'array' });
+                }
+
+                // Handle Sheets
+                if (rawWorkbook.SheetNames.length > 1) {
+                    sheetSelectorWrapper.classList.remove('hidden');
+                    selectSheet.innerHTML = rawWorkbook.SheetNames.map(name => `<option value="${name}">${name}</option>`).join('');
+                } else {
+                    sheetSelectorWrapper.classList.add('hidden');
+                }
+
+                switchSheet(rawWorkbook.SheetNames[0]);
+            } catch (err) {
+                console.error(err);
+                alert('파일을 읽는 도중 오류가 발생했습니다: ' + err.message);
+            }
+        }
+
+        function switchSheet(sheetName) {
+            const worksheet = rawWorkbook.Sheets[sheetName];
+            parsedData = XLSX.utils.sheet_to_json(worksheet, { defval: null });
+            processParsedData();
+        }
+
+        function processParsedData() {
+            if (!parsedData || parsedData.length === 0) {
+                alert('데이터가 비어있거나 읽을 수 없습니다.');
+                return;
+            }
+
+            // Discover columns
+            availableColumns = Object.keys(parsedData[0]);
+            numericColumns = [];
+            categoricalColumns = [];
+
+            availableColumns.forEach(col => {
+                let numCount = 0;
+                let validCount = 0;
+                parsedData.forEach(row => {
+                    const val = row[col];
+                    if (val !== null && val !== undefined && val !== '') {
+                        validCount++;
+                        if (!isNaN(Number(val))) {
+                            numCount++;
+                        }
+                    }
+                });
+
+                if (validCount > 0 && numCount / validCount > 0.6) {
+                    numericColumns.push(col);
+                } else {
+                    categoricalColumns.push(col);
+                }
+            });
+
+            // Populate column dropdowns
+            selectNumCol.innerHTML = numericColumns.length > 0 
+                ? numericColumns.map(col => `<option value="${col}">${col}</option>`).join('')
+                : availableColumns.map(col => `<option value="${col}">${col}</option>`).join('');
+
+            selectGroupCol.innerHTML = '<option value="">그룹 없음 (전체 데이터)</option>' + 
+                availableColumns.map(col => `<option value="${col}">${col}</option>`).join('');
+
+            renderDataTable();
+            updateVisualization();
+        }
+
+        function calculateStats(vals) {
+            if (!vals || vals.length === 0) return null;
+            const n = vals.length;
+            const sorted = [...vals].sort((a, b) => a - b);
+            
+            const sum = sorted.reduce((acc, v) => acc + v, 0);
+            const mean = sum / n;
+
+            const median = n % 2 === 0 
+                ? (sorted[n/2 - 1] + sorted[n/2]) / 2 
+                : sorted[Math.floor(n/2)];
+
+            const min = sorted[0];
+            const max = sorted[n - 1];
+
+            // Variance & Std Dev
+            const variance = sorted.reduce((acc, v) => acc + Math.pow(v - mean, 2), 0) / (n > 1 ? n - 1 : 1);
+            const stdDev = Math.sqrt(variance);
+
+            // Skewness
+            const m3 = sorted.reduce((acc, v) => acc + Math.pow(v - mean, 3), 0) / n;
+            const skewness = stdDev !== 0 ? m3 / Math.pow(stdDev, 3) : 0;
+
+            // Kurtosis
+            const m4 = sorted.reduce((acc, v) => acc + Math.pow(v - mean, 4), 0) / n;
+            const kurtosis = stdDev !== 0 ? (m4 / Math.pow(stdDev, 4)) - 3 : 0;
+
+            return { n, mean, median, min, max, stdDev, skewness, kurtosis };
+        }
+
+        // Gaussian Kernel for KDE
+        function gaussianKernel(u) {
+            return (1 / Math.sqrt(2 * Math.PI)) * Math.exp(-0.5 * u * u);
+        }
+
+        // Silverman's Rule of Thumb for Bandwidth Selection
+        function getSilvermanBandwidth(vals) {
+            const stats = calculateStats(vals);
+            if (!stats || stats.stdDev === 0) return 1.0;
+            return 1.06 * stats.stdDev * Math.pow(stats.n, -0.2);
+        }
+
+        function computeKDEPoints(vals, numPoints, minX, maxX, userBwMultiplier) {
+            const baseBw = getSilvermanBandwidth(vals);
+            const bw = baseBw * userBwMultiplier || 1.0;
+            const step = (maxX - minX) / (numPoints - 1);
+            
+            const points = [];
+            const n = vals.length;
+
+            for (let i = 0; i < numPoints; i++) {
+                const x = minX + i * step;
+                let densitySum = 0;
+
+                for (let j = 0; j < n; j++) {
+                    const u = (x - vals[j]) / bw;
+                    densitySum += gaussianKernel(u);
+                }
+
+                const density = densitySum / (n * bw);
+                points.push({ x: Number(x.toFixed(3)), y: density });
+            }
+
+            return points;
+        }
+
+        function updateVisualization() {
+            const targetCol = selectNumCol.value;
+            if (!targetCol || parsedData.length === 0) return;
+
+            // Extract numeric values
+            const validData = [];
+            parsedData.forEach(row => {
+                const val = Number(row[targetCol]);
+                if (!isNaN(val) && row[targetCol] !== null && row[targetCol] !== '') {
+                    validData.push(val);
+                }
+            });
+
+            if (validData.length === 0) return;
+
+            // Calculate statistics
+            const stats = calculateStats(validData);
+            renderStatsCards(stats);
+
+            // Compute Histogram Bins
+            const numBins = parseInt(inputBins.value, 10);
+            const minX = stats.min;
+            const maxX = stats.max;
+            const range = maxX - minX || 1.0;
+            const binWidth = range / numBins;
+
+            const binCounts = new Array(numBins).fill(0);
+            const binLabels = [];
+
+            for (let i = 0; i < numBins; i++) {
+                const bMin = minX + i * binWidth;
+                const bMax = bMin + binWidth;
+                binLabels.push(`${bMin.toFixed(1)}~${bMax.toFixed(1)}`);
+            }
+
+            validData.forEach(v => {
+                let idx = Math.floor((v - minX) / binWidth);
+                if (idx >= numBins) idx = numBins - 1;
+                if (idx < 0) idx = 0;
+                binCounts[idx]++;
+            });
+
+            // Compute KDE Points
+            const bwMult = parseFloat(inputBw.value);
+            const kdePoints = computeKDEPoints(validData, 100, minX - binWidth, maxX + binWidth, bwMult);
+
+            // Chart Datasets
+            const datasets = [];
+
+            // Histogram Dataset
+            if (chkShowHist.checked) {
+                // Map histogram to x values centered in bins
+                const histData = binCounts.map((count, i) => {
+                    const xCenter = minX + (i + 0.5) * binWidth;
+                    return { x: Number(xCenter.toFixed(3)), y: count };
+                });
+
+                datasets.push({
+                    type: 'bar',
+                    label: '히스토그램 (빈도수)',
+                    data: histData,
+                    backgroundColor: currentColor + '55',
+                    borderColor: currentColor,
+                    borderWidth: 1,
+                    barPercentage: 1.0,
+                    categoryPercentage: 1.0,
+                    yAxisID: 'y'
+                });
+            }
+
+            // KDE Dataset
+            if (chkShowKde.checked) {
+                datasets.push({
+                    type: 'line',
+                    label: 'KDE (확률밀도)',
+                    data: kdePoints,
+                    borderColor: currentColor,
+                    borderWidth: 2.5,
+                    pointRadius: 0,
+                    tension: 0.4,
+                    fill: false,
+                    yAxisID: 'y1'
+                });
+            }
+
+            // Mean / Median annotation plugins using custom line drawing
+            const showMean = chkShowMean.checked;
+            const showMedian = chkShowMedian.checked;
+
+            const customLinesPlugin = {
+                id: 'customLines',
+                afterDraw: (chart) => {
+                    const ctx = chart.ctx;
+                    const xAxis = chart.scales.x;
+                    const yAxis = chart.scales.y;
+
+                    if (showMean && stats.mean >= xAxis.min && stats.mean <= xAxis.max) {
+                        const xPos = xAxis.getPixelForValue(stats.mean);
+                        ctx.save();
+                        ctx.beginPath();
+                        ctx.setLineDash([6, 4]);
+                        ctx.strokeStyle = '#ef4444'; // Red
+                        ctx.lineWidth = 2;
+                        ctx.moveTo(xPos, yAxis.top);
+                        ctx.lineTo(xPos, yAxis.bottom);
+                        ctx.stroke();
+
+                        ctx.fillStyle = '#ef4444';
+                        ctx.font = '11px Inter, sans-serif';
+                        ctx.fillText(`평균: ${stats.mean.toFixed(2)}`, xPos + 5, yAxis.top + 15);
+                        ctx.restore();
+                    }
+
+                    if (showMedian && stats.median >= xAxis.min && stats.median <= xAxis.max) {
+                        const xPos = xAxis.getPixelForValue(stats.median);
+                        ctx.save();
+                        ctx.beginPath();
+                        ctx.setLineDash([4, 4]);
+                        ctx.strokeStyle = '#10b981'; // Emerald
+                        ctx.lineWidth = 2;
+                        ctx.moveTo(xPos, yAxis.top);
+                        ctx.lineTo(xPos, yAxis.bottom);
+                        ctx.stroke();
+
+                        ctx.fillStyle = '#10b981';
+                        ctx.font = '11px Inter, sans-serif';
+                        ctx.fillText(`중앙값: ${stats.median.toFixed(2)}`, xPos + 5, yAxis.top + 30);
+                        ctx.restore();
+                    }
+                }
+            };
+
+            // Destroy existing chart instance
+            if (chartInstance) {
+                chartInstance.destroy();
+            }
+
+            const ctx = document.getElementById('main-chart').getContext('2d');
+            chartInstance = new Chart(ctx, {
+                data: { datasets },
+                plugins: [customLinesPlugin],
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        legend: { display: true, position: 'top' },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    if (context.dataset.yAxisID === 'y1') {
+                                        return `KDE 밀도: ${context.parsed.y.toFixed(4)}`;
+                                    }
+                                    return `빈도수: ${context.parsed.y} 개`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            type: 'linear',
+                            title: { display: true, text: targetCol, font: { weight: 'bold', size: 12 } },
+                            grid: { color: '#f1f5f9' }
+                        },
+                        y: {
+                            type: 'linear',
+                            position: 'left',
+                            title: { display: true, text: '빈도수 (Count)', font: { size: 11 } },
+                            beginAtZero: true,
+                            grid: { color: '#f1f5f9' }
+                        },
+                        y1: {
+                            type: 'linear',
+                            position: 'right',
+                            title: { display: true, text: '확률 밀도 (Density)', font: { size: 11 } },
+                            beginAtZero: true,
+                            grid: { drawOnChartArea: false }
+                        }
+                    }
+                }
+            });
+
+            document.getElementById('chart-title').textContent = `${targetCol} 의 KDE & 히스토그램`;
+            document.getElementById('chart-subtitle').textContent = `총 ${stats.n}개 데이터 포인트 | Bins: ${numBins}개 | Bandwidth: ${(getSilvermanBandwidth(validData) * bwMult).toFixed(3)}`;
+        }
+
+        function renderStatsCards(stats) {
+            if (!stats) return;
+            document.getElementById('stat-count').textContent = stats.n.toLocaleString();
+            document.getElementById('stat-mean').textContent = stats.mean.toFixed(2);
+            document.getElementById('stat-median').textContent = stats.median.toFixed(2);
+            document.getElementById('stat-std').textContent = stats.stdDev.toFixed(2);
+            document.getElementById('stat-min').textContent = stats.min.toFixed(2);
+            document.getElementById('stat-max').textContent = stats.max.toFixed(2);
+            document.getElementById('stat-skew').textContent = stats.skewness.toFixed(3);
+            document.getElementById('stat-kurt').textContent = stats.kurtosis.toFixed(3);
+        }
+
+        function renderDataTable() {
+            const headRow = document.getElementById('table-head-row');
+            const bodyRows = document.getElementById('table-body-rows');
+            const dataRowCount = document.getElementById('data-row-count');
+
+            if (!parsedData || parsedData.length === 0) return;
+
+            dataRowCount.textContent = `전체 ${parsedData.length}개 행 중 최대 100개 표시`;
+
+            // Table Header
+            headRow.innerHTML = '<th class="px-3 py-2">#</th>' + 
+                availableColumns.map(col => `<th class="px-3 py-2 font-medium">${col}</th>`).join('');
+
+            // Table Body (Top 100 rows)
+            const rowsToDisplay = parsedData.slice(0, 100);
+            bodyRows.innerHTML = rowsToDisplay.map((row, idx) => {
+                const cells = availableColumns.map(col => `<td class="px-3 py-1.5 whitespace-nowrap">${row[col] !== null && row[col] !== undefined ? row[col] : ''}</td>`).join('');
+                return `<tr class="hover:bg-slate-50"><td class="px-3 py-1.5 text-slate-400">${idx + 1}</td>${cells}</tr>`;
+            }).join('');
+        }
+
+        function loadSampleData() {
+            // Generate clean sample data (Normal distribution mixture + Korean column names)
+            const sampleRows = [];
+            for (let i = 0; i < 250; i++) {
+                // Box-Muller transform for normal distribution
+                const u1 = Math.random();
+                const u2 = Math.random();
+                const z0 = Math.sqrt(-2.0 * Math.log(u1)) * Math.cos(2.0 * Math.PI * u2);
+                const score = Math.round((z0 * 15 + 72) * 10) / 10;
+                
+                const age = Math.floor(Math.random() * 25) + 20;
+                const department = ['영업부', '개발팀', '마케팅', '디자인'][Math.floor(Math.random() * 4)];
+
+                sampleRows.push({
+                    '부서명': department,
+                    '나이': age,
+                    '성과 점수': Math.max(0, Math.min(100, score))
+                });
+            }
+
+            parsedData = sampleRows;
+            currentFileName = '샘플_데이터.csv';
+            fileNameEl.textContent = '샘플_성과점수_데이터.csv';
+            fileSizeEl.textContent = '12.4 KB';
+            fileInfo.classList.remove('hidden');
+
+            processParsedData();
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,24 @@
+.ipynb_checkpoints/
+__pycache__/
+*.py[cod]
+
+.venv/
+venv/
+env/
+
+# 생성된 그림 — 필요하면 이 줄을 지우고 커밋한다
+output/
+
+# 강의에서 받은 원본 데이터는 배포 권한이 없을 수 있으니 기본 제외
+data/raw/
+
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# 채용 지원 관련 개인정보(이력서·연봉·전화통화 준비자료 등) — 폴더 전체 커밋 금지
+references/private/
+
+# 출처 확인 전까지 보류 — 강의 마친 후 포트폴리오 케이스로 검토
+references/lecture_data/

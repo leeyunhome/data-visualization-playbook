@@ -1,0 +1,9 @@
+pandas
+numpy
+matplotlib
+plotly
+openpyxl          # 엑셀 실습 파일 읽기
+jupyterlab
+scikit-learn      # 07 차원축소 (PCA, t-SNE)
+nbstripout        # git 커밋 시 출력 자동 제거
+# umap-learn      # 07에서 UMAP까지 해보려면 주석 해제

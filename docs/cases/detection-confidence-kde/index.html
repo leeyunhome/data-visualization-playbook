@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>실촬영 vs 3DGS 렌더 — 검출 신뢰도 분포 비교</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --surface-1:      #fcfcfb;
+            --surface-2:      #ffffff;
+            --border-1:       #e2e8f0;
+            --text-primary:   #0b0b0b;
+            --text-secondary: #52514e;
+            --text-muted:     #85837c;
+            --series-1:       #2a78d6; /* 실촬영 */
+            --series-2:       #eb6834; /* 3DGS 렌더 */
+            --series-3:       #1baf7a;
+            --series-4:       #eda100;
+            --grid-line:      #f1f5f9;
+        }
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --surface-1:      #141413;
+                --surface-2:      #1a1a19;
+                --border-1:       #33322e;
+                --text-primary:   #ffffff;
+                --text-secondary: #c3c2b7;
+                --text-muted:     #8f8d84;
+                --series-1:       #3987e5;
+                --series-2:       #d95926;
+                --series-3:       #199e70;
+                --series-4:       #c98500;
+                --grid-line:      #262622;
+            }
+        }
+        body { font-family: 'Inter', system-ui, -apple-system, sans-serif; background: var(--surface-1); color: var(--text-primary); }
+        .card { background: var(--surface-2); border: 1px solid var(--border-1); }
+        .muted { color: var(--text-secondary); }
+        .faint { color: var(--text-muted); }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: var(--border-1); border-radius: 4px; }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+    <!-- Intro / honesty context -->
+    <header class="border-b" style="border-color: var(--border-1);">
+        <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            <p class="text-xs font-semibold tracking-wide uppercase muted mb-2">개인 프로젝트 · 시각화 실습</p>
+            <h1 class="text-2xl font-bold mb-3">실촬영 vs 3DGS 렌더 — 검출 신뢰도 분포 비교</h1>
+            <p class="text-sm leading-relaxed muted max-w-3xl">
+                개인 프로젝트 <a href="https://github.com/leeyunhome/field2scene" target="_blank" rel="noopener"
+                class="underline decoration-dotted hover:opacity-80">field2scene</a>에서, 상업용 공개 영상
+                (<a href="https://www.pexels.com/video/tomato-farm-in-greenhouse-10179855/" target="_blank" rel="noopener"
+                class="underline decoration-dotted hover:opacity-80">"Tomato farm in greenhouse", Mehdi Alaoui, Pexels License</a>
+                — 직접 촬영 아님)의 토마토 온실 씬을 3D Gaussian Splatting으로 재구성한 뒤, 동일 카메라 시점의
+                실촬영 프레임과 렌더 프레임 24쌍에 같은 오픈보캡 검출기(YOLO-World, "tomato" 프롬프트)를 돌려
+                <strong class="muted">검출 신뢰도(confidence)</strong>가 실촬영과 렌더 사이에 얼마나 갭이 있는지
+                비교한 결과입니다. 실제 온실 현장 운영 데이터가 아니라 <strong class="muted">합성 vs 실촬영 비교 실험</strong>이며,
+                재현 가능한 전체 코드·리포트는 field2scene 저장소에 공개되어 있습니다.
+            </p>
+            <p class="text-xs faint mt-2 max-w-3xl">
+                ※ 이 차트는 <strong class="muted">프레임 24개의 평균 신뢰도값 분포</strong>를 그린 것입니다.
+                field2scene 리포트의 요약 지표(검출 건수로 가중평균한 전체 신뢰도)와는 정의가 달라 아래
+                통계값과 정확히 일치하지 않을 수 있습니다 — 원본 수치는 저장소의
+                <code class="text-[11px]">report/gap_tomato/summary.json</code> 참고.
+            </p>
+            <p class="text-xs faint mt-3">
+                차트 기법(히스토그램 · KDE)은 인프런
+                <a href="https://www.inflearn.com/course/32-data-visualizatio/dashboard?cid=343563" target="_blank" rel="noopener"
+                class="underline decoration-dotted hover:opacity-80">32가지 데이터 시각화 전략 - 비전공자를 위한 기초이론 & 실습</a>
+                (반병현) 13강 "AI를 활용한 히스토그램, KDE 플롯"에서 배운 것을 이 실험 데이터에 적용했습니다.
+            </p>
+        </div>
+    </header>
+
+    <main class="flex-1 max-w-5xl w-full mx-auto p-4 sm:p-6 lg:p-8 grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+        <aside class="lg:col-span-4 space-y-5">
+            <div class="card rounded-xl shadow-sm p-5">
+                <h2 class="text-xs font-bold uppercase tracking-wider mb-3 flex items-center gap-2">
+                    <i data-lucide="upload-cloud" class="w-4 h-4" style="color: var(--series-1);"></i>
+                    데이터
+                </h2>
+                <p class="text-xs muted mb-3">기본값은 field2scene의 실측 24쌍 데이터입니다. 직접 만든 CSV/XLSX를
+                    올려서 같은 도구로 다른 데이터도 볼 수 있습니다.</p>
+
+                <div id="drop-zone" class="border-2 border-dashed rounded-xl p-5 text-center cursor-pointer transition flex flex-col items-center justify-center min-h-[100px]"
+                     style="border-color: var(--border-1);">
+                    <i data-lucide="file-spreadsheet" class="w-7 h-7 faint mb-2"></i>
+                    <p class="text-xs font-semibold">클릭하거나 파일을 드래그하세요</p>
+                    <p class="text-[11px] faint mt-1">.csv, .xlsx, .xls 파일 지원</p>
+                    <input type="file" id="file-input" accept=".xlsx, .xls, .csv" class="hidden">
+                </div>
+
+                <div id="file-info" class="mt-3 p-2.5 rounded-lg flex items-center justify-between text-xs card">
+                    <div class="flex items-center gap-2 truncate">
+                        <i data-lucide="file-check" class="w-4 h-4 shrink-0" style="color: var(--series-3);"></i>
+                        <span id="file-name" class="font-medium truncate">field2scene_gap_tomato_per_frame.csv</span>
+                    </div>
+                    <span id="file-size" class="faint text-[10px] shrink-0">-</span>
+                </div>
+
+                <div class="mt-3 pt-3 border-t" style="border-color: var(--border-1);">
+                    <label class="block text-[11px] font-semibold muted mb-1.5 flex items-center justify-between">
+                        <span>CSV 인코딩 (한글 깨짐 해결)</span>
+                        <span class="text-[10px]" style="color: var(--series-1);">자동 인식</span>
+                    </label>
+                    <select id="select-encoding" class="w-full card rounded-lg px-2.5 py-1.5 text-xs">
+                        <option value="auto" selected>자동 감지 (EUC-KR / UTF-8)</option>
+                        <option value="euc-kr">EUC-KR / CP949 (Windows Excel 기본)</option>
+                        <option value="utf-8">UTF-8 (유니코드)</option>
+                    </select>
+                </div>
+
+                <button id="btn-reset-sample" class="mt-3 w-full px-3 py-1.5 rounded-lg text-xs font-medium border transition flex items-center justify-center gap-1.5"
+                        style="border-color: var(--border-1); color: var(--series-1);">
+                    <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i>
+                    <span>field2scene 실측 데이터로 되돌리기</span>
+                </button>
+            </div>
+
+            <div id="controls-panel" class="card rounded-xl shadow-sm p-5 space-y-4">
+                <h2 class="text-xs font-bold uppercase tracking-wider flex items-center gap-2 border-b pb-2" style="border-color: var(--border-1);">
+                    <i data-lucide="sliders" class="w-4 h-4" style="color: var(--series-1);"></i>
+                    시각화 설정
+                </h2>
+
+                <div id="sheet-selector-wrapper" class="hidden">
+                    <label class="block text-xs font-semibold mb-1">워크시트 선택</label>
+                    <select id="select-sheet" class="w-full card rounded-lg px-3 py-1.5 text-xs"></select>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold mb-1">수치형 열 (X축 데이터)</label>
+                    <select id="select-num-col" class="w-full card rounded-lg px-3 py-1.5 text-xs">
+                        <option value="">데이터를 업로드하세요</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold mb-1">그룹화 범주 열 (선택)</label>
+                    <select id="select-group-col" class="w-full card rounded-lg px-3 py-1.5 text-xs">
+                        <option value="">그룹 없음 (전체 데이터)</option>
+                    </select>
+                </div>
+
+                <div>
+                    <div class="flex justify-between text-xs font-semibold mb-1">
+                        <span>히스토그램 구간(Bins) 수</span>
+                        <span id="bin-count-val" style="color: var(--series-1);" class="font-bold">8</span>
+                    </div>
+                    <input type="range" id="input-bins" min="5" max="60" value="8" class="w-full cursor-pointer">
+                </div>
+
+                <div>
+                    <div class="flex justify-between text-xs font-semibold mb-1">
+                        <span>KDE 평활도 (Bandwidth)</span>
+                        <span id="bw-val" style="color: var(--series-1);" class="font-bold">1.0x</span>
+                    </div>
+                    <input type="range" id="input-bw" min="0.2" max="3.0" step="0.1" value="1.0" class="w-full cursor-pointer">
+                    <p class="text-[10px] faint mt-0.5">Silverman 규칙 기반 자동 대역폭 조정</p>
+                </div>
+
+                <div class="space-y-2 pt-2 border-t text-xs" style="border-color: var(--border-1);">
+                    <label class="flex items-center gap-2 cursor-pointer font-medium">
+                        <input type="checkbox" id="chk-show-hist" checked class="rounded h-4 w-4">
+                        <span>히스토그램 막대 표시</span>
+                    </label>
+                    <label class="flex items-center gap-2 cursor-pointer font-medium">
+                        <input type="checkbox" id="chk-show-kde" checked class="rounded h-4 w-4">
+                        <span>KDE 곡선 표시</span>
+                    </label>
+                    <label class="flex items-center gap-2 cursor-pointer font-medium">
+                        <input type="checkbox" id="chk-show-mean" checked class="rounded h-4 w-4">
+                        <span>평균값(Mean) 수직선 (그룹 없을 때만)</span>
+                    </label>
+                </div>
+            </div>
+        </aside>
+
+        <section class="lg:col-span-8 space-y-6">
+            <div class="card rounded-xl shadow-sm p-1.5 flex items-center gap-1">
+                <button id="tab-btn-chart" class="px-4 py-2 text-xs font-semibold rounded-lg transition flex items-center gap-1.5">
+                    <i data-lucide="line-chart" class="w-4 h-4"></i><span>시각화 차트</span>
+                </button>
+                <button id="tab-btn-stats" class="px-4 py-2 text-xs font-semibold rounded-lg transition flex items-center gap-1.5">
+                    <i data-lucide="calculator" class="w-4 h-4"></i><span>요약 통계량</span>
+                </button>
+                <button id="tab-btn-data" class="px-4 py-2 text-xs font-semibold rounded-lg transition flex items-center gap-1.5">
+                    <i data-lucide="table" class="w-4 h-4"></i><span>데이터 미리보기</span>
+                </button>
+            </div>
+
+            <div id="tab-content-chart" class="card rounded-xl shadow-sm p-5 space-y-4">
+                <div>
+                    <h2 id="chart-title" class="text-base font-bold">분포 차트</h2>
+                    <p id="chart-subtitle" class="text-xs faint">데이터를 불러오는 중…</p>
+                </div>
+                <div class="relative w-full h-[420px] rounded-lg p-2" style="background: var(--surface-1); border: 1px solid var(--border-1);">
+                    <canvas id="main-chart"></canvas>
+                </div>
+            </div>
+
+            <div id="tab-content-stats" class="hidden space-y-4">
+                <div class="card rounded-xl shadow-sm p-5">
+                    <h2 class="text-sm font-bold mb-4 flex items-center gap-2">
+                        <i data-lucide="pie-chart" class="w-4 h-4" style="color: var(--series-1);"></i>
+                        기술 통계 요약
+                    </h2>
+                    <div id="stats-single" class="grid grid-cols-2 sm:grid-cols-4 gap-3"></div>
+                    <div id="stats-grouped" class="hidden overflow-x-auto">
+                        <table class="w-full text-xs text-left">
+                            <thead class="uppercase font-semibold" style="color: var(--text-secondary);">
+                                <tr id="stats-table-head"></tr>
+                            </thead>
+                            <tbody id="stats-table-body" class="divide-y" style="border-color: var(--border-1);"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <div id="tab-content-data" class="hidden card rounded-xl shadow-sm p-5 space-y-4">
+                <div class="flex items-center justify-between">
+                    <h2 class="text-sm font-bold">원본 데이터 (최대 100행 표시)</h2>
+                    <span id="data-row-count" class="text-xs faint">0행</span>
+                </div>
+                <div class="overflow-x-auto max-h-[400px] rounded-lg" style="border: 1px solid var(--border-1);">
+                    <table class="w-full text-xs text-left" id="raw-data-table">
+                        <thead class="uppercase font-semibold sticky top-0" style="background: var(--surface-1); color: var(--text-secondary);">
+                            <tr id="table-head-row"><th class="px-4 py-2.5">#</th></tr>
+                        </thead>
+                        <tbody id="table-body-rows" class="divide-y" style="border-color: var(--border-1);"></tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer class="border-t mt-8" style="border-color: var(--border-1);">
+        <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-6 text-xs faint flex flex-wrap gap-x-6 gap-y-1">
+            <span>데이터·코드: <a href="https://github.com/leeyunhome/field2scene" target="_blank" rel="noopener" class="underline decoration-dotted">github.com/leeyunhome/field2scene</a></span>
+            <span>강의 출처: <a href="https://www.inflearn.com/course/32-data-visualizatio/dashboard?cid=343563" target="_blank" rel="noopener" class="underline decoration-dotted">인프런 32가지 데이터 시각화 전략</a></span>
+            <a href="../../index.html" class="underline decoration-dotted">← 포트폴리오 목록</a>
+        </div>
+    </footer>
+
+    <script>
+        // ---- theme-aware colors for Chart.js (canvas ignores CSS, so read the tokens in JS) ----
+        function cssVar(name) {
+            return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+        }
+        function themeColors() {
+            return {
+                series: [cssVar('--series-1'), cssVar('--series-2'), cssVar('--series-3'), cssVar('--series-4')],
+                text: cssVar('--text-secondary'),
+                grid: cssVar('--grid-line'),
+            };
+        }
+
+        // ---- field2scene real measurement: report/gap_tomato/per_frame.csv, reshaped long ----
+        // 24 view-pairs, 재현 가능한 원본: https://github.com/leeyunhome/field2scene/blob/main/report/gap_tomato/per_frame.csv
+        const REAL_CONF = [0.2177,0.2341,0.2345,0.2083,0.2007,0.1997,0.1850,0.1774,0.1858,0.1915,0.2530,0.1877,0.1753,0.1697,0.1839,0.2332,0.1474,0.1521,0.1606,0.1830,0.1554,0.1583,0.1337,0.1543];
+        const RENDER_CONF = [0.2244,0.2339,0.2425,0.2072,0.1973,0.1966,0.1883,0.1884,0.1860,0.1964,0.2397,0.1781,0.1802,0.1375,0.1750,0.2226,0.1404,0.1262,0.1277,0.1537,0.1658,0.1755,0.1339,0.1443];
+        function fieldToSceneSample() {
+            const rows = [];
+            REAL_CONF.forEach((v, i) => rows.push({ view: `${String(i).padStart(5, '0')}.png`, source: '실촬영', conf: v }));
+            RENDER_CONF.forEach((v, i) => rows.push({ view: `${String(i).padStart(5, '0')}.png`, source: '3DGS 렌더', conf: v }));
+            return rows;
+        }
+
+        let rawWorkbook = null;
+        let parsedData = [];
+        let availableColumns = [];
+        let numericColumns = [];
+        let chartInstance = null;
+
+        const dropZone = document.getElementById('drop-zone');
+        const fileInput = document.getElementById('file-input');
+        const fileNameEl = document.getElementById('file-name');
+        const fileSizeEl = document.getElementById('file-size');
+        const selectEncoding = document.getElementById('select-encoding');
+        const btnResetSample = document.getElementById('btn-reset-sample');
+
+        const selectSheet = document.getElementById('select-sheet');
+        const sheetSelectorWrapper = document.getElementById('sheet-selector-wrapper');
+        const selectNumCol = document.getElementById('select-num-col');
+        const selectGroupCol = document.getElementById('select-group-col');
+        const inputBins = document.getElementById('input-bins');
+        const binCountVal = document.getElementById('bin-count-val');
+        const inputBw = document.getElementById('input-bw');
+        const bwVal = document.getElementById('bw-val');
+        const chkShowHist = document.getElementById('chk-show-hist');
+        const chkShowKde = document.getElementById('chk-show-kde');
+        const chkShowMean = document.getElementById('chk-show-mean');
+
+        const tabs = {
+            chart: [document.getElementById('tab-btn-chart'), document.getElementById('tab-content-chart')],
+            stats: [document.getElementById('tab-btn-stats'), document.getElementById('tab-content-stats')],
+            data: [document.getElementById('tab-btn-data'), document.getElementById('tab-content-data')],
+        };
+
+        function activeTabClass() { return 'px-4 py-2 text-xs font-semibold rounded-lg transition flex items-center gap-1.5'; }
+        function paintTabs(active) {
+            Object.entries(tabs).forEach(([key, [btn, panel]]) => {
+                btn.className = activeTabClass();
+                btn.style.background = key === active ? 'var(--surface-1)' : '';
+                btn.style.color = key === active ? 'var(--series-1)' : 'var(--text-secondary)';
+                panel.classList.toggle('hidden', key !== active);
+            });
+        }
+        Object.entries(tabs).forEach(([key, [btn]]) => btn.addEventListener('click', () => paintTabs(key)));
+        paintTabs('chart');
+
+        window.addEventListener('DOMContentLoaded', () => {
+            if (window.lucide) lucide.createIcons();
+            setupEventListeners();
+            loadFieldToSceneSample();
+        });
+
+        window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+            if (parsedData.length) updateVisualization();
+        });
+
+        function setupEventListeners() {
+            dropZone.addEventListener('click', () => fileInput.click());
+            dropZone.addEventListener('dragover', (e) => { e.preventDefault(); });
+            dropZone.addEventListener('drop', (e) => {
+                e.preventDefault();
+                if (e.dataTransfer.files.length > 0) handleFileSelect(e.dataTransfer.files[0]);
+            });
+            fileInput.addEventListener('change', (e) => {
+                if (e.target.files.length > 0) handleFileSelect(e.target.files[0]);
+            });
+            selectEncoding.addEventListener('change', () => { if (currentFileBuffer) processFileBuffer(); });
+            btnResetSample.addEventListener('click', loadFieldToSceneSample);
+
+            selectSheet.addEventListener('change', () => switchSheet(selectSheet.value));
+            selectNumCol.addEventListener('change', updateVisualization);
+            selectGroupCol.addEventListener('change', updateVisualization);
+            inputBins.addEventListener('input', (e) => { binCountVal.textContent = e.target.value; updateVisualization(); });
+            inputBw.addEventListener('input', (e) => { bwVal.textContent = parseFloat(e.target.value).toFixed(1) + 'x'; updateVisualization(); });
+            [chkShowHist, chkShowKde, chkShowMean].forEach(chk => chk.addEventListener('change', updateVisualization));
+        }
+
+        let currentFileBuffer = null;
+        let currentFileName = '';
+
+        function handleFileSelect(file) {
+            currentFileName = file.name;
+            fileNameEl.textContent = file.name;
+            fileSizeEl.textContent = (file.size / 1024).toFixed(1) + ' KB';
+            const reader = new FileReader();
+            reader.onload = (e) => { currentFileBuffer = e.target.result; processFileBuffer(); };
+            reader.readAsArrayBuffer(file);
+        }
+
+        function decodeBufferToString(buffer, preference) {
+            const bytes = new Uint8Array(buffer);
+            if (preference === 'utf-8') return new TextDecoder('utf-8').decode(bytes);
+            if (preference === 'euc-kr') return new TextDecoder('euc-kr').decode(bytes);
+            try {
+                return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+            } catch (err) {
+                return new TextDecoder('euc-kr').decode(bytes);
+            }
+        }
+
+        function processFileBuffer() {
+            if (!currentFileBuffer) return;
+            try {
+                const isCsv = currentFileName.toLowerCase().endsWith('.csv');
+                const pref = selectEncoding.value;
+                if (isCsv) {
+                    rawWorkbook = XLSX.read(decodeBufferToString(currentFileBuffer, pref), { type: 'string' });
+                } else {
+                    rawWorkbook = XLSX.read(currentFileBuffer, { type: 'array' });
+                }
+                if (rawWorkbook.SheetNames.length > 1) {
+                    sheetSelectorWrapper.classList.remove('hidden');
+                    selectSheet.innerHTML = rawWorkbook.SheetNames.map(n => `<option value="${n}">${n}</option>`).join('');
+                } else {
+                    sheetSelectorWrapper.classList.add('hidden');
+                }
+                switchSheet(rawWorkbook.SheetNames[0]);
+            } catch (err) {
+                alert('파일을 읽는 도중 오류가 발생했습니다: ' + err.message);
+            }
+        }
+
+        function switchSheet(sheetName) {
+            const ws = rawWorkbook.Sheets[sheetName];
+            parsedData = XLSX.utils.sheet_to_json(ws, { defval: null });
+            processParsedData();
+        }
+
+        function loadFieldToSceneSample() {
+            parsedData = fieldToSceneSample();
+            currentFileName = 'field2scene_gap_tomato_per_frame.csv';
+            fileNameEl.textContent = currentFileName;
+            fileSizeEl.textContent = '실측 24쌍';
+            processParsedData({ defaultNum: 'conf', defaultGroup: 'source' });
+        }
+
+        function processParsedData(defaults) {
+            if (!parsedData || parsedData.length === 0) return;
+            availableColumns = Object.keys(parsedData[0]);
+            numericColumns = [];
+            const categoricalColumns = [];
+
+            availableColumns.forEach(col => {
+                let numCount = 0, validCount = 0;
+                parsedData.forEach(row => {
+                    const val = row[col];
+                    if (val !== null && val !== undefined && val !== '') {
+                        validCount++;
+                        if (!isNaN(Number(val))) numCount++;
+                    }
+                });
+                (validCount > 0 && numCount / validCount > 0.6 ? numericColumns : categoricalColumns).push(col);
+            });
+
+            selectNumCol.innerHTML = (numericColumns.length ? numericColumns : availableColumns)
+                .map(c => `<option value="${c}">${c}</option>`).join('');
+            selectGroupCol.innerHTML = '<option value="">그룹 없음 (전체 데이터)</option>' +
+                availableColumns.map(c => `<option value="${c}">${c}</option>`).join('');
+
+            if (defaults && numericColumns.includes(defaults.defaultNum)) selectNumCol.value = defaults.defaultNum;
+            if (defaults && availableColumns.includes(defaults.defaultGroup)) selectGroupCol.value = defaults.defaultGroup;
+            inputBins.value = defaults ? 8 : inputBins.value;
+            binCountVal.textContent = inputBins.value;
+
+            renderDataTable();
+            updateVisualization();
+        }
+
+        function calculateStats(vals) {
+            if (!vals || vals.length === 0) return null;
+            const n = vals.length;
+            const sorted = [...vals].sort((a, b) => a - b);
+            const mean = sorted.reduce((a, v) => a + v, 0) / n;
+            const median = n % 2 === 0 ? (sorted[n/2 - 1] + sorted[n/2]) / 2 : sorted[Math.floor(n/2)];
+            const min = sorted[0], max = sorted[n - 1];
+            const variance = sorted.reduce((a, v) => a + Math.pow(v - mean, 2), 0) / (n > 1 ? n - 1 : 1);
+            const stdDev = Math.sqrt(variance);
+            const m3 = sorted.reduce((a, v) => a + Math.pow(v - mean, 3), 0) / n;
+            const skewness = stdDev !== 0 ? m3 / Math.pow(stdDev, 3) : 0;
+            const m4 = sorted.reduce((a, v) => a + Math.pow(v - mean, 4), 0) / n;
+            const kurtosis = stdDev !== 0 ? (m4 / Math.pow(stdDev, 4)) - 3 : 0;
+            return { n, mean, median, min, max, stdDev, skewness, kurtosis };
+        }
+
+        function gaussianKernel(u) { return (1 / Math.sqrt(2 * Math.PI)) * Math.exp(-0.5 * u * u); }
+        function silvermanBw(vals) {
+            const s = calculateStats(vals);
+            if (!s || s.stdDev === 0) return 1.0;
+            return 1.06 * s.stdDev * Math.pow(s.n, -0.2);
+        }
+        function computeKDE(vals, numPoints, minX, maxX, bwMult) {
+            const bw = silvermanBw(vals) * bwMult || 1.0;
+            const step = (maxX - minX) / (numPoints - 1);
+            const points = [];
+            for (let i = 0; i < numPoints; i++) {
+                const x = minX + i * step;
+                let density = 0;
+                for (let j = 0; j < vals.length; j++) density += gaussianKernel((x - vals[j]) / bw);
+                points.push({ x: Number(x.toFixed(4)), y: density / (vals.length * bw) });
+            }
+            return points;
+        }
+        function computeHistogram(vals, minX, maxX, numBins) {
+            const range = (maxX - minX) || 1.0;
+            const binWidth = range / numBins;
+            const counts = new Array(numBins).fill(0);
+            vals.forEach(v => {
+                let idx = Math.floor((v - minX) / binWidth);
+                if (idx >= numBins) idx = numBins - 1;
+                if (idx < 0) idx = 0;
+                counts[idx]++;
+            });
+            return counts.map((count, i) => ({ x: Number((minX + (i + 0.5) * binWidth).toFixed(4)), y: count }));
+        }
+
+        function updateVisualization() {
+            const targetCol = selectNumCol.value;
+            const groupCol = selectGroupCol.value;
+            if (!targetCol || parsedData.length === 0) return;
+
+            const rows = parsedData
+                .map(r => ({ v: Number(r[targetCol]), g: groupCol ? (r[groupCol] ?? '(없음)') : null }))
+                .filter(r => !isNaN(r.v) && r.v !== null);
+            if (rows.length === 0) return;
+
+            const allVals = rows.map(r => r.v);
+            const globalMin = Math.min(...allVals), globalMax = Math.max(...allVals);
+            const numBins = parseInt(inputBins.value, 10);
+            const bwMult = parseFloat(inputBw.value);
+            const colors = themeColors();
+
+            const groups = groupCol ? [...new Set(rows.map(r => r.g))] : [null];
+            const datasets = [];
+
+            groups.forEach((g, gi) => {
+                const vals = groupCol ? rows.filter(r => r.g === g).map(r => r.v) : allVals;
+                const color = colors.series[gi % colors.series.length];
+                const label = groupCol ? String(g) : targetCol;
+
+                if (chkShowHist.checked) {
+                    datasets.push({
+                        type: 'bar', label,
+                        data: computeHistogram(vals, globalMin, globalMax, numBins),
+                        backgroundColor: color + '4d', borderColor: color, borderWidth: 1,
+                        borderRadius: 3, barPercentage: 1.0, categoryPercentage: 1.0, yAxisID: 'y',
+                    });
+                }
+                if (chkShowKde.checked) {
+                    const pad = (globalMax - globalMin) / numBins;
+                    datasets.push({
+                        type: 'line', label,
+                        data: computeKDE(vals, 120, globalMin - pad, globalMax + pad, bwMult),
+                        borderColor: color, borderWidth: 2, pointRadius: 0, tension: 0.4, fill: false, yAxisID: 'y1',
+                    });
+                }
+            });
+
+            const showMean = chkShowMean.checked && !groupCol;
+            const singleStats = !groupCol ? calculateStats(allVals) : null;
+            const linesPlugin = {
+                id: 'meanLine',
+                afterDraw: (chart) => {
+                    if (!showMean || !singleStats) return;
+                    const { ctx, scales: { x: xa, y: ya } } = chart;
+                    const xPos = xa.getPixelForValue(singleStats.mean);
+                    ctx.save();
+                    ctx.setLineDash([6, 4]);
+                    ctx.strokeStyle = colors.series[3];
+                    ctx.lineWidth = 2;
+                    ctx.beginPath(); ctx.moveTo(xPos, ya.top); ctx.lineTo(xPos, ya.bottom); ctx.stroke();
+                    ctx.fillStyle = colors.series[3];
+                    ctx.font = '11px Inter, sans-serif';
+                    ctx.fillText(`평균: ${singleStats.mean.toFixed(3)}`, xPos + 5, ya.top + 14);
+                    ctx.restore();
+                }
+            };
+
+            if (chartInstance) chartInstance.destroy();
+            const ctx = document.getElementById('main-chart').getContext('2d');
+            chartInstance = new Chart(ctx, {
+                data: { datasets },
+                plugins: [linesPlugin],
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        legend: {
+                            display: true, position: 'top',
+                            labels: { color: colors.text, filter: (item) => !item.text || datasets[item.datasetIndex] === undefined || datasets[item.datasetIndex].type === 'line' },
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: (c) => c.dataset.yAxisID === 'y1' ? `${c.dataset.label} KDE 밀도: ${c.parsed.y.toFixed(4)}` : `${c.dataset.label} 빈도수: ${c.parsed.y}개`,
+                            },
+                        },
+                    },
+                    scales: {
+                        x: { type: 'linear', title: { display: true, text: targetCol, color: colors.text, font: { weight: 'bold', size: 12 } }, grid: { color: colors.grid }, ticks: { color: colors.text } },
+                        y: { type: 'linear', position: 'left', title: { display: true, text: '빈도수', color: colors.text, font: { size: 11 } }, beginAtZero: true, grid: { color: colors.grid }, ticks: { color: colors.text } },
+                        y1: { type: 'linear', position: 'right', title: { display: true, text: '확률 밀도', color: colors.text, font: { size: 11 } }, beginAtZero: true, grid: { drawOnChartArea: false }, ticks: { color: colors.text } },
+                    },
+                },
+            });
+
+            document.getElementById('chart-title').textContent = groupCol ? `${targetCol} — 그룹별(${groupCol}) KDE & 히스토그램` : `${targetCol} 의 KDE & 히스토그램`;
+            document.getElementById('chart-subtitle').textContent = `총 ${rows.length}개${groupCol ? ` (${groups.length}개 그룹)` : ''} | Bins: ${numBins}개`;
+
+            renderStats(rows, groupCol, groups);
+        }
+
+        function renderStats(rows, groupCol, groups) {
+            const single = document.getElementById('stats-single');
+            const grouped = document.getElementById('stats-grouped');
+
+            if (!groupCol) {
+                grouped.classList.add('hidden');
+                single.classList.remove('hidden');
+                const s = calculateStats(rows.map(r => r.v));
+                const cards = [
+                    ['데이터 개수 (N)', s.n.toLocaleString(), null],
+                    ['평균 (Mean)', s.mean.toFixed(3), 'var(--series-1)'],
+                    ['중앙값 (Median)', s.median.toFixed(3), 'var(--series-3)'],
+                    ['표준편차', s.stdDev.toFixed(3), null],
+                    ['최솟값', s.min.toFixed(3), null],
+                    ['최댓값', s.max.toFixed(3), null],
+                    ['왜도', s.skewness.toFixed(3), null],
+                    ['첨도', s.kurtosis.toFixed(3), null],
+                ];
+                single.innerHTML = cards.map(([label, val, color]) => `
+                    <div class="p-3 rounded-lg text-center card">
+                        <span class="text-[11px] faint block">${label}</span>
+                        <span class="text-base font-bold" style="${color ? `color:${color}` : ''}">${val}</span>
+                    </div>`).join('');
+            } else {
+                single.classList.add('hidden');
+                grouped.classList.remove('hidden');
+                const metrics = ['n', 'mean', 'median', 'stdDev', 'min', 'max'];
+                const labels = { n: 'N', mean: '평균', median: '중앙값', stdDev: '표준편차', min: '최솟값', max: '최댓값' };
+                document.getElementById('stats-table-head').innerHTML = '<th class="px-3 py-2">그룹</th>' +
+                    metrics.map(m => `<th class="px-3 py-2">${labels[m]}</th>`).join('');
+                document.getElementById('stats-table-body').innerHTML = groups.map(g => {
+                    const s = calculateStats(rows.filter(r => r.g === g).map(r => r.v));
+                    return `<tr><td class="px-3 py-2 font-medium">${g}</td>` +
+                        metrics.map(m => `<td class="px-3 py-2">${m === 'n' ? s[m] : s[m].toFixed(3)}</td>`).join('') + '</tr>';
+                }).join('');
+            }
+        }
+
+        function renderDataTable() {
+            const head = document.getElementById('table-head-row');
+            const body = document.getElementById('table-body-rows');
+            const count = document.getElementById('data-row-count');
+            if (!parsedData.length) return;
+            count.textContent = `전체 ${parsedData.length}개 행 중 최대 100개 표시`;
+            head.innerHTML = '<th class="px-3 py-2">#</th>' + availableColumns.map(c => `<th class="px-3 py-2 font-medium">${c}</th>`).join('');
+            body.innerHTML = parsedData.slice(0, 100).map((row, i) => {
+                const cells = availableColumns.map(c => `<td class="px-3 py-1.5 whitespace-nowrap">${row[c] ?? ''}</td>`).join('');
+                return `<tr>${`<td class="px-3 py-1.5 faint">${i + 1}</td>`}${cells}</tr>`;
+            }).join('');
+        }
+    </script>
+</body>
+</html>
