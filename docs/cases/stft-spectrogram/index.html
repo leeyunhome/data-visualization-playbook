@@ -1,0 +1,1097 @@
+<!DOCTYPE html>
+<html lang="ko" class="h-full bg-slate-950 text-slate-100">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>STFT 오디오 파형 & 스펙트로그램 분석기</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#f0f6ff',
+              500: '#3b82f6',
+              600: '#2563eb',
+              700: '#1d4ed8',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    /* Custom scrollbar */
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-track { background: #0f172a; }
+    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #475569; }
+    
+    .canvas-container {
+      position: relative;
+      background-color: #030712;
+      border: 1px solid #1e293b;
+      border-radius: 0.75rem;
+      overflow: hidden;
+    }
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+    .custom-range {
+      accent-color: #3b82f6;
+    }
+  </style>
+</head>
+<body class="h-full flex flex-col font-sans antialiased selection:bg-blue-500 selection:text-white">
+
+  <!-- Top Navigation Header -->
+  <header class="border-b border-slate-800 bg-slate-900/80 backdrop-blur-md sticky top-0 z-50 px-4 py-3 flex flex-wrap items-center justify-between gap-4">
+    <div class="flex items-center gap-3">
+      <div class="bg-gradient-to-tr from-blue-600 to-indigo-500 text-white p-2.5 rounded-xl shadow-lg shadow-blue-500/20">
+        <i class="fa-solid to-wave-square text-xl"></i>
+      </div>
+      <div>
+        <h1 class="text-lg font-bold tracking-tight text-white flex items-center gap-2">
+          STFT 오디오 파형 & 스펙트로그램 분석기
+          <span class="text-xs font-normal px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20">v2.0 Pro</span>
+        </h1>
+        <p class="text-xs text-slate-400">Short-Time Fourier Transform Real-time Inspector</p>
+      </div>
+    </div>
+
+    <!-- Actions & Quick File Loader -->
+    <div class="flex items-center gap-2">
+      <button id="demoBtn" class="px-3.5 py-1.5 text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg transition duration-150 flex items-center gap-2 shadow-sm">
+        <i class="fa-solid fa-wand-magic-sparkles text-amber-400"></i>
+        데모 음원 생성
+      </button>
+      <label class="px-4 py-1.5 text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white rounded-lg cursor-pointer transition duration-150 flex items-center gap-2 shadow-md shadow-blue-600/30">
+        <i class="fa-solid fa-file-audio"></i>
+        음파 파일 업로드
+        <input type="file" id="audioFileInput" class="hidden" accept="audio/*">
+      </label>
+    </div>
+  </header>
+
+  <!-- Main Workspace Layout -->
+  <main class="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6 grid grid-cols-1 lg:grid-cols-4 gap-6 overflow-y-auto">
+
+    <!-- Left / Top Viewport: Graphs and Controls (3 Cols) -->
+    <section class="lg:col-span-3 flex flex-col gap-5">
+
+      <!-- Audio Drop Target Banner -->
+      <div id="dropZone" class="border-2 border-dashed border-slate-800 hover:border-blue-500/50 bg-slate-900/40 hover:bg-slate-900/80 rounded-2xl p-4 transition-all text-center flex flex-col md:flex-row items-center justify-between gap-4 cursor-pointer">
+        <div class="flex items-center gap-3 text-left">
+          <div class="w-10 h-10 rounded-full bg-slate-800 flex items-center justify-center text-slate-400">
+            <i class="fa-solid fa-cloud-arrow-up text-lg"></i>
+          </div>
+          <div>
+            <div id="fileNameDisplay" class="text-sm font-semibold text-slate-200">파일을 드래그하여 올려놓거나 버튼을 눌러 업로드하세요</div>
+            <div id="fileSpecsDisplay" class="text-xs text-slate-500">MP3, WAV, M4A, AAC, FLAC 지원 (Web Audio API 기반 디코딩)</div>
+          </div>
+        </div>
+        <div id="audioMetrics" class="hidden md:flex items-center gap-4 text-xs text-slate-400 border-l border-slate-800 pl-4">
+          <div><span class="text-slate-500 block">Sample Rate</span> <span id="metaSampleRate" class="font-mono text-slate-200">-</span></div>
+          <div><span class="text-slate-500 block">Channels</span> <span id="metaChannels" class="font-mono text-slate-200">-</span></div>
+          <div><span class="text-slate-500 block">Duration</span> <span id="metaDuration" class="font-mono text-slate-200">-</span></div>
+        </div>
+      </div>
+
+      <!-- Player Control Bar -->
+      <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-4 shadow-xl">
+        
+        <!-- Playback Controls -->
+        <div class="flex items-center gap-2">
+          <button id="playPauseBtn" disabled class="w-11 h-11 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:hover:bg-blue-600 text-white flex items-center justify-center transition shadow-lg shadow-blue-600/30 text-lg">
+            <i class="fa-solid fa-play ml-0.5"></i>
+          </button>
+          <button id="stopBtn" disabled class="w-10 h-10 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-300 flex items-center justify-center transition">
+            <i class="fa-solid fa-stop"></i>
+          </button>
+          <button id="loopBtn" class="w-10 h-10 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 border border-transparent transition" title="반복 재생 켜기/끄기">
+            <i class="fa-solid fa-repeat"></i>
+          </button>
+        </div>
+
+        <!-- Timestamp readout -->
+        <div class="flex items-center gap-3 bg-slate-950 px-4 py-2 rounded-xl border border-slate-800">
+          <i class="fa-regular fa-clock text-blue-400 text-sm"></i>
+          <span id="timeDisplay" class="font-mono text-base font-bold text-slate-100 tracking-wider">00:00.000</span>
+          <span class="text-slate-600 text-sm">/</span>
+          <span id="totalTimeDisplay" class="font-mono text-xs text-slate-400">00:00.000</span>
+        </div>
+
+        <!-- Speed & Volume Controls -->
+        <div class="flex items-center gap-4">
+          <!-- Speed -->
+          <div class="flex items-center gap-2">
+            <label for="speedSelect" class="text-xs text-slate-400">속도</label>
+            <select id="speedSelect" class="bg-slate-950 border border-slate-800 text-xs text-slate-200 rounded-lg px-2 py-1.5 focus:outline-none focus:border-blue-500">
+              <option value="0.5">0.5x</option>
+              <option value="0.75">0.75x</option>
+              <option value="1.0" selected>1.0x</option>
+              <option value="1.25">1.25x</option>
+              <option value="1.5">1.5x</option>
+              <option value="2.0">2.0x</option>
+            </select>
+          </div>
+
+          <!-- Volume -->
+          <div class="flex items-center gap-2">
+            <button id="muteBtn" class="text-slate-400 hover:text-slate-200 text-sm w-6">
+              <i class="fa-solid fa-volume-high"></i>
+            </button>
+            <input type="range" id="volumeSlider" min="0" max="1" step="0.01" value="0.8" class="custom-range w-20 h-1.5 bg-slate-800 rounded-lg cursor-pointer">
+          </div>
+        </div>
+      </div>
+
+      <!-- 1. Waveform Canvas Section -->
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col gap-2">
+        <div class="flex items-center justify-between text-xs font-semibold text-slate-300">
+          <span class="flex items-center gap-2">
+            <i class="fa-solid fa-chart-line text-blue-400"></i>
+            1. 원본 시간 파형 (Time Domain Waveform)
+          </span>
+          <span class="text-slate-500 font-normal">클릭/드래그하여 타임스탬프 이동</span>
+        </div>
+        
+        <div class="canvas-container h-36" id="waveContainer">
+          <canvas id="waveformCanvas"></canvas>
+          <canvas id="waveformOverlayCanvas" class="absolute top-0 left-0 pointer-events-none"></canvas>
+        </div>
+      </div>
+
+      <!-- 2. STFT Spectrogram Canvas Section -->
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col gap-2">
+        <div class="flex items-center justify-between text-xs font-semibold text-slate-300">
+          <span class="flex items-center gap-2">
+            <i class="fa-solid fa-align-center text-purple-400"></i>
+            2. STFT 스펙트로그램 (Short-Time Fourier Transform)
+          </span>
+          <div class="flex items-center gap-3 text-xs text-slate-400 font-normal">
+            <span id="stftInfoBadge" class="hidden md:inline text-slate-500">20Hz - Nyquist</span>
+            <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-purple-500 inline-block"></span> 주파수 분해능 분석</span>
+          </div>
+        </div>
+
+        <div class="canvas-container h-72" id="specContainer">
+          <canvas id="spectrogramCanvas"></canvas>
+          <canvas id="spectrogramOverlayCanvas" class="absolute top-0 left-0 pointer-events-none"></canvas>
+        </div>
+
+        <!-- Realtime Inspect Inspector Footbar -->
+        <div id="inspectorBar" class="mt-1 bg-slate-950 px-3 py-2 rounded-lg border border-slate-800/80 flex flex-wrap items-center justify-between text-xs text-slate-400">
+          <div class="flex items-center gap-4">
+            <span><i class="fa-regular fa-clock text-blue-400 mr-1"></i> 시간: <strong id="hoverTime" class="text-slate-200 font-mono">--:--.--</strong></span>
+            <span><i class="fa-solid fa-wave-square text-emerald-400 mr-1"></i> 주파수: <strong id="hoverFreq" class="text-slate-200 font-mono">--- Hz</strong></span>
+            <span><i class="fa-solid fa-bolt text-amber-400 mr-1"></i> 진폭/강도: <strong id="hoverDb" class="text-slate-200 font-mono">--- dB</strong></span>
+          </div>
+          <span class="text-slate-500 text-[11px]">스펙트로그램 위에 마우스를 올려 상세 주파수를 측정하세요</span>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- Right Sidebar: STFT Parameters & Settings (1 Col) -->
+    <aside class="flex flex-col gap-5">
+      
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 flex flex-col gap-4">
+        <h2 class="text-sm font-bold text-slate-200 border-b border-slate-800 pb-3 flex items-center gap-2">
+          <i class="fa-solid fa-sliders text-blue-400"></i>
+          STFT 파라미터 설정
+        </h2>
+
+        <!-- Window Function -->
+        <div class="flex flex-col gap-1.5">
+          <label for="windowFuncSelect" class="text-xs font-semibold text-slate-300 flex justify-between">
+            <span>윈도우 함수 (Window)</span>
+            <span class="text-slate-500 font-normal">누설 오차 방지</span>
+          </label>
+          <select id="windowFuncSelect" class="bg-slate-950 border border-slate-800 text-xs text-slate-200 rounded-lg p-2.5 focus:outline-none focus:border-blue-500">
+            <option value="hann" selected>Hann (Hanning)</option>
+            <option value="hamming">Hamming</option>
+            <option value="blackman">Blackman</option>
+            <option value="rectangular">Rectangular (Flat)</option>
+          </select>
+        </div>
+
+        <!-- FFT Size -->
+        <div class="flex flex-col gap-1.5">
+          <label for="fftSizeSelect" class="text-xs font-semibold text-slate-300 flex justify-between">
+            <span>FFT 크기 (Window Size)</span>
+            <span class="text-slate-500 font-normal">시간 vs 주파수 해상도</span>
+          </label>
+          <select id="fftSizeSelect" class="bg-slate-950 border border-slate-800 text-xs text-slate-200 rounded-lg p-2.5 focus:outline-none focus:border-blue-500">
+            <option value="512">512 (높은 시간 해상도)</option>
+            <option value="1024" selected>1024 (균형)</option>
+            <option value="2048">2048 (높은 주파수 해상도)</option>
+            <option value="4096">4096 (정밀 고주파 분석)</option>
+          </select>
+        </div>
+
+        <!-- Overlap / Hop Size -->
+        <div class="flex flex-col gap-1.5">
+          <label for="overlapSelect" class="text-xs font-semibold text-slate-300 flex justify-between">
+            <span>오버랩 비율 (Overlap)</span>
+            <span id="overlapVal" class="text-blue-400 font-mono">75%</span>
+          </label>
+          <select id="overlapSelect" class="bg-slate-950 border border-slate-800 text-xs text-slate-200 rounded-lg p-2.5 focus:outline-none focus:border-blue-500">
+            <option value="0.5">50% Overlap (속도 우선)</option>
+            <option value="0.75" selected>75% Overlap (권장)</option>
+            <option value="0.875">87.5% Overlap (초고밀도)</option>
+          </select>
+        </div>
+
+        <!-- Color Map Palette -->
+        <div class="flex flex-col gap-1.5">
+          <label for="colorMapSelect" class="text-xs font-semibold text-slate-300">컬러 맵 (Color Palette)</label>
+          <select id="colorMapSelect" class="bg-slate-950 border border-slate-800 text-xs text-slate-200 rounded-lg p-2.5 focus:outline-none focus:border-blue-500">
+            <option value="magma" selected>Magma (퍼플-오렌지-옐로우)</option>
+            <option value="viridis">Viridis (딥블루-그린-옐로우)</option>
+            <option value="plasma">Plasma (블루-핑크-옐로우)</option>
+            <option value="inferno">Inferno (블랙-레드-옐로우)</option>
+            <option value="rainbow">Rainbow (무지개 고대비)</option>
+            <option value="grayscale">Grayscale (흑백 스펙트럼)</option>
+          </select>
+        </div>
+
+        <!-- Frequency Scale -->
+        <div class="flex flex-col gap-1.5">
+          <label for="freqScaleSelect" class="text-xs font-semibold text-slate-300">주파수 축 스케일</label>
+          <select id="freqScaleSelect" class="bg-slate-950 border border-slate-800 text-xs text-slate-200 rounded-lg p-2.5 focus:outline-none focus:border-blue-500">
+            <option value="linear" selected>선형 (Linear Hz)</option>
+            <option value="logarithmic">로그 (Logarithmic Hz - 청각 보정)</option>
+          </select>
+        </div>
+
+        <!-- Dynamic Range (Min dB) Slider -->
+        <div class="flex flex-col gap-1.5 pt-2 border-t border-slate-800">
+          <div class="flex justify-between items-center text-xs">
+            <span class="font-semibold text-slate-300">동적 범위 (Dynamic Range)</span>
+            <span id="dbFloorVal" class="text-blue-400 font-mono">-80 dB</span>
+          </div>
+          <input type="range" id="dbFloorSlider" min="-120" max="-30" step="5" value="-80" class="custom-range w-full h-1.5 bg-slate-800 rounded-lg cursor-pointer">
+          <span class="text-[10px] text-slate-500">노이즈 플로어를 조절하여 신호 명암비를 변경합니다.</span>
+        </div>
+
+        <!-- Apply / Recompute Button -->
+        <button id="recomputeBtn" class="mt-2 w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-blue-400 font-semibold rounded-xl text-xs border border-slate-700 transition flex items-center justify-center gap-2">
+          <i class="fa-solid fa-arrows-rotate"></i>
+          스펙트로그램 다시 계산
+        </button>
+
+      </div>
+
+      <!-- Quick Tips Box -->
+      <div class="bg-slate-900/50 border border-slate-800/80 rounded-2xl p-4 text-xs text-slate-400 flex flex-col gap-2">
+        <div class="font-bold text-slate-300 flex items-center gap-1.5">
+          <i class="fa-solid fa-circle-info text-blue-400"></i>
+          분석 팁 (Analysis Info)
+        </div>
+        <p class="leading-relaxed">
+          • <strong class="text-slate-300">시간-주파수 불확정성</strong>: FFT 크기가 커지면 주파수 분해능은 정밀해지나 시간 정확도가 떨어집니다.<br>
+          • <strong class="text-slate-300">타임스탬프 탐색</strong>: 파형 또는 스펙트로그램 화면 아무 곳이나 클릭하면 해당 시간대로 즉시 이동합니다.
+        </p>
+      </div>
+
+    </aside>
+
+  </main>
+
+  <!-- Loading Overlay Toast -->
+  <div id="loadingOverlay" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden flex-col items-center justify-center gap-4 text-white">
+    <div class="w-12 h-12 border-4 border-blue-500/30 border-t-blue-500 rounded-full animate-spin"></div>
+    <div class="text-center">
+      <h3 id="loadingTitle" class="font-bold text-base">오디오 연산 처리 중...</h3>
+      <p id="loadingSubtitle" class="text-xs text-slate-400 mt-1">Short-Time Fourier Transform을 계산하고 있습니다</p>
+    </div>
+  </div>
+
+  <script>
+    // Global Application State
+    const state = {
+      audioCtx: null,
+      audioBuffer: null,
+      sourceNode: null,
+      gainNode: null,
+      isPlaying: false,
+      isLooping: false,
+      playbackRate: 1.0,
+      startTime: 0,      // AudioContext currentTime when playback started
+      pauseOffset: 0,    // Current offset in seconds
+      animFrameId: null,
+      
+      // STFT Configs
+      fftSize: 1024,
+      overlap: 0.75,
+      windowFunc: 'hann',
+      colorMap: 'magma',
+      freqScale: 'linear',
+      minDb: -80,
+      maxDb: 0,
+      
+      // Computed Cache
+      spectrogramData: null, // Array of Float32Array frames
+      spectrogramWidth: 0,
+      spectrogramHeight: 0,
+      
+      // Hover Info
+      hoverTimeSec: 0,
+      hoverFreqHz: 0,
+      hoverValDb: 0
+    };
+
+    // DOM Elements
+    const dropZone = document.getElementById('dropZone');
+    const audioFileInput = document.getElementById('audioFileInput');
+    const demoBtn = document.getElementById('demoBtn');
+    
+    const playPauseBtn = document.getElementById('playPauseBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const loopBtn = document.getElementById('loopBtn');
+    const speedSelect = document.getElementById('speedSelect');
+    const muteBtn = document.getElementById('muteBtn');
+    const volumeSlider = document.getElementById('volumeSlider');
+    
+    const timeDisplay = document.getElementById('timeDisplay');
+    const totalTimeDisplay = document.getElementById('totalTimeDisplay');
+    
+    const waveformCanvas = document.getElementById('waveformCanvas');
+    const waveformOverlayCanvas = document.getElementById('waveformOverlayCanvas');
+    const spectrogramCanvas = document.getElementById('spectrogramCanvas');
+    const spectrogramOverlayCanvas = document.getElementById('spectrogramOverlayCanvas');
+    
+    const waveContainer = document.getElementById('waveContainer');
+    const specContainer = document.getElementById('specContainer');
+    
+    // Config controls
+    const windowFuncSelect = document.getElementById('windowFuncSelect');
+    const fftSizeSelect = document.getElementById('fftSizeSelect');
+    const overlapSelect = document.getElementById('overlapSelect');
+    const colorMapSelect = document.getElementById('colorMapSelect');
+    const freqScaleSelect = document.getElementById('freqScaleSelect');
+    const dbFloorSlider = document.getElementById('dbFloorSlider');
+    const dbFloorVal = document.getElementById('dbFloorVal');
+    const recomputeBtn = document.getElementById('recomputeBtn');
+    const loadingOverlay = document.getElementById('loadingOverlay');
+    const loadingTitle = document.getElementById('loadingTitle');
+    
+    // Metadata displays
+    const fileNameDisplay = document.getElementById('fileNameDisplay');
+    const fileSpecsDisplay = document.getElementById('fileSpecsDisplay');
+    const audioMetrics = document.getElementById('audioMetrics');
+    const metaSampleRate = document.getElementById('metaSampleRate');
+    const metaChannels = document.getElementById('metaChannels');
+    const metaDuration = document.getElementById('metaDuration');
+    const hoverTime = document.getElementById('hoverTime');
+    const hoverFreq = document.getElementById('hoverFreq');
+    const hoverDb = document.getElementById('hoverDb');
+
+    function initAudioContext() {
+      if (!state.audioCtx) {
+        const AudioCtxClass = window.AudioContext || window.webkitAudioContext;
+        state.audioCtx = new AudioCtxClass();
+        state.gainNode = state.audioCtx.createGain();
+        state.gainNode.gain.value = parseFloat(volumeSlider.value);
+        state.gainNode.connect(state.audioCtx.destination);
+      }
+      if (state.audioCtx.state === 'suspended') {
+        state.audioCtx.resume();
+      }
+    }
+
+    // Handle File Selection
+    audioFileInput.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (file) loadAudioFile(file);
+    });
+
+    // Handle Drag and Drop
+    dropZone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      dropZone.classList.add('border-blue-500', 'bg-slate-900/90');
+    });
+    dropZone.addEventListener('dragleave', () => {
+      dropZone.classList.remove('border-blue-500', 'bg-slate-900/90');
+    });
+    dropZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropZone.classList.remove('border-blue-500', 'bg-slate-900/90');
+      const file = e.dataTransfer.files[0];
+      if (file && file.type.startsWith('audio/')) {
+        loadAudioFile(file);
+      }
+    });
+
+    // Demo Synthetic Audio Generator
+    demoBtn.addEventListener('click', generateDemoAudio);
+
+    async function loadAudioFile(file) {
+      showLoading("오디오 디코딩 중...", file.name);
+      initAudioContext();
+      stopAudio();
+
+      try {
+        const arrayBuffer = await file.arrayBuffer();
+        state.audioBuffer = await state.audioCtx.decodeAudioData(arrayBuffer);
+        
+        fileNameDisplay.textContent = file.name;
+        fileSpecsDisplay.textContent = `오디오 파일 성공적으로 로드됨 (${(file.size / (1024*1024)).toFixed(2)} MB)`;
+        updateMetadataUI();
+        
+        await processAndRenderAll();
+      } catch (err) {
+        console.error(err);
+        alert("오디오 파일을 디코딩하는데 실패했습니다. 다른 파일을 시도해보세요.");
+      } finally {
+        hideLoading();
+      }
+    }
+
+    function generateDemoAudio() {
+      showLoading("데모 신호 생성 중...", "다중 파동 및 칩(Chirp) 신호 생성");
+      initAudioContext();
+      stopAudio();
+
+      setTimeout(async () => {
+        const sampleRate = 44100;
+        const duration = 5.0; // 5 seconds
+        const numSamples = sampleRate * duration;
+        const buffer = state.audioCtx.createBuffer(1, numSamples, sampleRate);
+        const data = buffer.getChannelData(0);
+
+        for (let i = 0; i < numSamples; i++) {
+          const t = i / sampleRate;
+          
+          // 1. Fundamental tone 440Hz (A4)
+          const f1 = 440;
+          let sample = 0.3 * Math.sin(2 * Math.PI * f1 * t);
+
+          // 2. Harmonic 880Hz
+          sample += 0.15 * Math.sin(2 * Math.PI * 880 * t);
+
+          // 3. Linear Chirp (300Hz to 4000Hz)
+          const fStart = 300;
+          const fEnd = 4000;
+          const currentChirpFreq = fStart + (fEnd - fStart) * (t / duration);
+          sample += 0.25 * Math.sin(2 * Math.PI * currentChirpFreq * t);
+
+          // 4. Burst pulses at 3.5s
+          if (t > 3.2 && t < 3.8) {
+            sample += 0.2 * Math.sin(2 * Math.PI * 2500 * t);
+          }
+
+          data[i] = sample;
+        }
+
+        state.audioBuffer = buffer;
+        fileNameDisplay.textContent = "Synthetic_Chirp_Harmonics_Demo.wav (생성된 음원)";
+        fileSpecsDisplay.textContent = "가상 주파수 칩(300Hz-4kHz) 및 440Hz 하모닉스 신호";
+        updateMetadataUI();
+
+        await processAndRenderAll();
+        hideLoading();
+      }, 50);
+    }
+
+    function updateMetadataUI() {
+      if (!state.audioBuffer) return;
+      audioMetrics.classList.remove('hidden');
+      metaSampleRate.textContent = `${state.audioBuffer.sampleRate} Hz`;
+      metaChannels.textContent = state.audioBuffer.numberOfChannels === 1 ? 'Mono' : 'Stereo';
+      metaDuration.textContent = formatTime(state.audioBuffer.duration);
+      totalTimeDisplay.textContent = formatTime(state.audioBuffer.duration);
+      
+      playPauseBtn.disabled = false;
+      stopBtn.disabled = false;
+    }
+
+    // Radix-2 Cooley-Tukey In-Place FFT Algorithm
+    function fft(re, im) {
+      const n = re.length;
+      let j = 0;
+      for (let i = 0; i < n - 1; i++) {
+        if (i < j) {
+          [re[i], re[j]] = [re[j], re[i]];
+          [im[i], im[j]] = [im[j], im[i]];
+        }
+        let k = n >> 1;
+        while (k <= j) {
+          j -= k;
+          k >>= 1;
+        }
+        j += k;
+      }
+
+      for (let len = 2; len <= n; len <<= 1) {
+        const half = len >> 1;
+        const angle = (-2 * Math.PI) / len;
+        const wStepR = Math.cos(angle);
+        const wStepI = Math.sin(angle);
+
+        for (let i = 0; i < n; i += len) {
+          let wR = 1.0;
+          let wI = 0.0;
+          for (let k = 0; k < half; k++) {
+            const posEven = i + k;
+            const posOdd = i + k + half;
+
+            const tR = wR * re[posOdd] - wI * im[posOdd];
+            const tI = wR * im[posOdd] + wI * re[posOdd];
+
+            const uR = re[posEven];
+            const uI = im[posEven];
+
+            re[posEven] = uR + tR;
+            im[posEven] = uI + tI;
+            re[posOdd] = uR - tR;
+            im[posOdd] = uI - tI;
+
+            const nextWR = wR * wStepR - wI * wStepI;
+            wI = wR * wStepI + wI * wStepR;
+            wR = nextWR;
+          }
+        }
+      }
+    }
+
+    // Window Functions generator
+    function getWindowFunction(type, N) {
+      const win = new Float32Array(N);
+      for (let n = 0; n < N; n++) {
+        if (type === 'hann') {
+          win[n] = 0.5 * (1 - Math.cos((2 * Math.PI * n) / (N - 1)));
+        } else if (type === 'hamming') {
+          win[n] = 0.54 - 0.46 * Math.cos((2 * Math.PI * n) / (N - 1));
+        } else if (type === 'blackman') {
+          win[n] = 0.42 - 0.5 * Math.cos((2 * Math.PI * n) / (N - 1)) + 0.08 * Math.cos((4 * Math.PI * n) / (N - 1));
+        } else {
+          win[n] = 1.0; // Rectangular
+        }
+      }
+      return win;
+    }
+
+    async function processAndRenderAll() {
+      resizeAllCanvases();
+      drawWaveform();
+      await computeSTFTAndRenderSpectrogram();
+      updatePlayheadUI(state.pauseOffset);
+    }
+
+    function resizeAllCanvases() {
+      const dpr = window.devicePixelRatio || 1;
+      
+      [waveContainer, specContainer].forEach(container => {
+        const canvases = container.querySelectorAll('canvas');
+        const w = container.clientWidth;
+        const h = container.clientHeight;
+
+        canvases.forEach(c => {
+          c.width = Math.floor(w * dpr);
+          c.height = Math.floor(h * dpr);
+        });
+      });
+    }
+
+    // Render Time Domain Waveform
+    function drawWaveform() {
+      if (!state.audioBuffer) return;
+      const ctx = waveformCanvas.getContext('2d');
+      const w = waveformCanvas.width;
+      const h = waveformCanvas.height;
+      const dpr = window.devicePixelRatio || 1;
+
+      ctx.clearRect(0, 0, w, h);
+
+      // Background Gradient
+      const bgGrad = ctx.createLinearGradient(0, 0, 0, h);
+      bgGrad.addColorStop(0, '#020617');
+      bgGrad.addColorStop(1, '#0f172a');
+      ctx.fillStyle = bgGrad;
+      ctx.fillRect(0, 0, w, h);
+
+      // Center zero line
+      ctx.strokeStyle = '#1e293b';
+      ctx.lineWidth = 1 * dpr;
+      ctx.beginPath();
+      ctx.moveTo(0, h / 2);
+      ctx.lineTo(w, h / 2);
+      ctx.stroke();
+
+      // Audio Channel Data
+      const channelData = state.audioBuffer.getChannelData(0);
+      const step = Math.max(1, Math.floor(channelData.length / w));
+      const amp = h / 2;
+
+      ctx.strokeStyle = '#38bdf8'; // Cyan wave
+      ctx.lineWidth = 1.5 * dpr;
+      ctx.beginPath();
+
+      for (let i = 0; i < w; i++) {
+        let min = 1.0;
+        let max = -1.0;
+        const start = i * step;
+        const end = Math.min(start + step, channelData.length);
+
+        for (let j = start; j < end; j++) {
+          const val = channelData[j];
+          if (val < min) min = val;
+          if (val > max) max = val;
+        }
+
+        ctx.moveTo(i, amp + min * amp * 0.95);
+        ctx.lineTo(i, amp + max * amp * 0.95);
+      }
+      ctx.stroke();
+    }
+
+    async function computeSTFTAndRenderSpectrogram() {
+      if (!state.audioBuffer) return;
+
+      const channelData = state.audioBuffer.getChannelData(0);
+      const sampleRate = state.audioBuffer.duration > 0 ? state.audioBuffer.sampleRate : 44100;
+      const N = state.fftSize;
+      const hop = Math.max(16, Math.floor(N * (1 - state.overlap)));
+      const windowFunc = getWindowFunction(state.windowFunc, N);
+
+      const numFrames = Math.floor((channelData.length - N) / hop);
+      const numBins = N / 2;
+
+      state.spectrogramData = new Array(numFrames);
+
+      const re = new Float32Array(N);
+      const im = new Float32Array(N);
+
+      // STFT Computation
+      for (let f = 0; f < numFrames; f++) {
+        const offset = f * hop;
+
+        for (let i = 0; i < N; i++) {
+          re[i] = channelData[offset + i] * windowFunc[i];
+          im[i] = 0;
+        }
+
+        fft(re, im);
+
+        const mags = new Float32Array(numBins);
+        for (let k = 0; k < numBins; k++) {
+          const mag = Math.sqrt(re[k] * re[k] + im[k] * im[k]);
+          // Convert to dB
+          let db = 20 * Math.log10(mag + 1e-6);
+          mags[k] = db;
+        }
+        state.spectrogramData[f] = mags;
+      }
+
+      state.spectrogramWidth = numFrames;
+      state.spectrogramHeight = numBins;
+
+      renderSpectrogramCanvas();
+    }
+
+    function renderSpectrogramCanvas() {
+      const ctx = spectrogramCanvas.getContext('2d');
+      const w = spectrogramCanvas.width;
+      const h = spectrogramCanvas.height;
+      const numFrames = state.spectrogramWidth;
+      const numBins = state.spectrogramHeight;
+
+      if (!numFrames || !numBins) return;
+
+      const imgData = ctx.createImageData(w, h);
+      const data = imgData.data;
+
+      const minDb = state.minDb;
+      const maxDb = state.maxDb;
+      const dbRange = maxDb - minDb;
+
+      const isLog = state.freqScale === 'logarithmic';
+
+      for (let x = 0; x < w; x++) {
+        const frameIdx = Math.floor((x / w) * numFrames);
+        const frame = state.spectrogramData[frameIdx];
+
+        if (!frame) continue;
+
+        for (let y = 0; y < h; y++) {
+          // Normalized height 0.0 (bottom) to 1.0 (top)
+          const normY = (h - 1 - y) / h;
+          
+          let binIdx;
+          if (isLog) {
+            // Logarithmic mapping for frequencies
+            const minLog = Math.log10(1);
+            const maxLog = Math.log10(numBins);
+            const binFloat = Math.pow(10, minLog + normY * (maxLog - minLog));
+            binIdx = Math.min(numBins - 1, Math.max(0, Math.floor(binFloat)));
+          } else {
+            // Linear mapping
+            binIdx = Math.min(numBins - 1, Math.floor(normY * numBins));
+          }
+
+          const db = frame[binIdx];
+          const normVal = Math.max(0, Math.min(1, (db - minDb) / dbRange));
+
+          const color = getPaletteColor(normVal, state.colorMap);
+
+          const pixelIdx = (y * w + x) * 4;
+          data[pixelIdx] = color[0];     // Red
+          data[pixelIdx + 1] = color[1]; // Green
+          data[pixelIdx + 2] = color[2]; // Blue
+          data[pixelIdx + 3] = 255;      // Alpha
+        }
+      }
+
+      ctx.putImageData(imgData, 0, 0);
+    }
+
+    // Color Look-Up Maps
+    function getPaletteColor(v, paletteName) {
+      // Clamp 0..1
+      v = Math.max(0, Math.min(1, v));
+
+      if (paletteName === 'magma') {
+        const r = Math.min(255, Math.floor(Math.pow(v, 0.7) * 255 * 1.2));
+        const g = Math.min(255, Math.floor(Math.pow(v, 1.8) * 255));
+        const b = Math.min(255, Math.floor(Math.sin(v * Math.PI) * 180 + v * 70));
+        return [r, g, b];
+      } else if (paletteName === 'viridis') {
+        const r = Math.floor(Math.sin(v * Math.PI * 0.5) * 253 * v);
+        const g = Math.floor(Math.pow(v, 0.8) * 231);
+        const b = Math.floor((1 - Math.cos(v * Math.PI)) * 150 + 35);
+        return [r, g, b];
+      } else if (paletteName === 'plasma') {
+        const r = Math.floor(Math.sin(v * Math.PI * 0.8) * 240 + 15);
+        const g = Math.floor(Math.pow(v, 2) * 220);
+        const b = Math.floor(Math.cos(v * Math.PI * 0.5) * 220 + 35);
+        return [r, g, b];
+      } else if (paletteName === 'inferno') {
+        const r = Math.floor(Math.pow(v, 0.8) * 255);
+        const g = Math.floor(Math.pow(v, 2) * 230);
+        const b = Math.floor(Math.pow(v, 4) * 200);
+        return [r, g, b];
+      } else if (paletteName === 'rainbow') {
+        const h = (1 - v) * 240; // Hue 240 (Blue) to 0 (Red)
+        return hslToRgb(h / 360, 1.0, 0.5);
+      } else {
+        // Grayscale
+        const val = Math.floor(v * 255);
+        return [val, val, val];
+      }
+    }
+
+    function hslToRgb(h, s, l) {
+      let r, g, b;
+      if (s === 0) {
+        r = g = b = l;
+      } else {
+        const hue2rgb = (p, q, t) => {
+          if (t < 0) t += 1;
+          if (t > 1) t -= 1;
+          if (t < 1/6) return p + (q - p) * 6 * t;
+          if (t < 1/2) return q;
+          if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+          return p;
+        };
+        const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+        const p = 2 * l - q;
+        r = hue2rgb(p, q, h + 1/3);
+        g = hue2rgb(p, q, h);
+        b = hue2rgb(p, q, h - 1/3);
+      }
+      return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
+    }
+
+    function playAudio(offset = 0) {
+      if (!state.audioBuffer) return;
+      initAudioContext();
+      stopAudioSource();
+
+      state.sourceNode = state.audioCtx.createBufferSource();
+      state.sourceNode.buffer = state.audioBuffer;
+      state.sourceNode.playbackRate.value = state.playbackRate;
+      state.sourceNode.loop = state.isLooping;
+      
+      state.sourceNode.connect(state.gainNode);
+
+      state.startTime = state.audioCtx.currentTime - (offset / state.playbackRate);
+      state.pauseOffset = offset;
+      
+      state.sourceNode.start(0, offset);
+      state.isPlaying = true;
+
+      playPauseBtn.innerHTML = '<i class="fa-solid fa-pause"></i>';
+      playPauseBtn.classList.replace('bg-blue-600', 'bg-amber-600');
+      playPauseBtn.classList.replace('hover:bg-blue-500', 'hover:bg-amber-500');
+
+      state.sourceNode.onended = () => {
+        if (!state.isLooping && getCurrentTime() >= state.audioBuffer.duration) {
+          stopAudio();
+        }
+      };
+
+      animatePlayhead();
+    }
+
+    function pauseAudio() {
+      if (!state.isPlaying) return;
+      state.pauseOffset = getCurrentTime();
+      stopAudioSource();
+      state.isPlaying = false;
+
+      playPauseBtn.innerHTML = '<i class="fa-solid fa-play ml-0.5"></i>';
+      playPauseBtn.classList.replace('bg-amber-600', 'bg-blue-600');
+      playPauseBtn.classList.replace('hover:bg-amber-500', 'hover:bg-blue-500');
+
+      cancelAnimationFrame(state.animFrameId);
+    }
+
+    function stopAudio() {
+      stopAudioSource();
+      state.isPlaying = false;
+      state.pauseOffset = 0;
+
+      playPauseBtn.innerHTML = '<i class="fa-solid fa-play ml-0.5"></i>';
+      playPauseBtn.classList.replace('bg-amber-600', 'bg-blue-600');
+      playPauseBtn.classList.replace('hover:bg-amber-500', 'hover:bg-blue-500');
+
+      cancelAnimationFrame(state.animFrameId);
+      updatePlayheadUI(0);
+    }
+
+    function stopAudioSource() {
+      if (state.sourceNode) {
+        try { state.sourceNode.stop(); } catch(e) {}
+        state.sourceNode.disconnect();
+        state.sourceNode = null;
+      }
+    }
+
+    function getCurrentTime() {
+      if (!state.isPlaying) return state.pauseOffset;
+      const elapsed = (state.audioCtx.currentTime - state.startTime) * state.playbackRate;
+      if (state.isLooping) {
+        return elapsed % state.audioBuffer.duration;
+      }
+      return Math.min(elapsed, state.audioBuffer.duration);
+    }
+
+    function animatePlayhead() {
+      if (!state.isPlaying) return;
+      const cur = getCurrentTime();
+      updatePlayheadUI(cur);
+      state.animFrameId = requestAnimationFrame(animatePlayhead);
+    }
+
+    function updatePlayheadUI(timeSec) {
+      timeDisplay.textContent = formatTime(timeSec);
+      if (!state.audioBuffer) return;
+
+      const progress = Math.max(0, Math.min(1, timeSec / state.audioBuffer.duration));
+
+      // Draw Waveform Playhead Overlay
+      drawPlayheadLine(waveformOverlayCanvas, progress);
+      // Draw Spectrogram Playhead Overlay
+      drawPlayheadLine(spectrogramOverlayCanvas, progress);
+    }
+
+    function drawPlayheadLine(overlayCanvas, progress) {
+      const ctx = overlayCanvas.getContext('2d');
+      const w = overlayCanvas.width;
+      const h = overlayCanvas.height;
+      const dpr = window.devicePixelRatio || 1;
+
+      ctx.clearRect(0, 0, w, h);
+
+      const x = Math.floor(w * progress);
+
+      // Playhead vertical line
+      ctx.strokeStyle = '#ef4444'; // Red playhead
+      ctx.lineWidth = 2 * dpr;
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, h);
+      ctx.stroke();
+
+      // Glowing dot at top
+      ctx.fillStyle = '#f87171';
+      ctx.beginPath();
+      ctx.arc(x, 4 * dpr, 4 * dpr, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    function formatTime(sec) {
+      const m = Math.floor(sec / 60);
+      const s = Math.floor(sec % 60);
+      const ms = Math.floor((sec % 1) * 1000);
+      return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}.${String(ms).padStart(3, '0')}`;
+    }
+
+    // Handle Canvas Click & Seeking
+    function handleCanvasSeek(e, container) {
+      if (!state.audioBuffer) return;
+      const rect = container.getBoundingClientRect();
+      const clickX = e.clientX - rect.left;
+      const ratio = Math.max(0, Math.min(1, clickX / rect.width));
+      const targetTime = ratio * state.audioBuffer.duration;
+
+      state.pauseOffset = targetTime;
+      updatePlayheadUI(targetTime);
+
+      if (state.isPlaying) {
+        playAudio(targetTime);
+      }
+    }
+
+    waveContainer.addEventListener('click', (e) => handleCanvasSeek(e, waveContainer));
+    specContainer.addEventListener('click', (e) => handleCanvasSeek(e, specContainer));
+
+    // Handle Hover Inspection on Spectrogram
+    specContainer.addEventListener('mousemove', (e) => {
+      if (!state.audioBuffer || !state.spectrogramData) return;
+      const rect = specContainer.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+
+      const normX = Math.max(0, Math.min(1, x / rect.width));
+      const normY = Math.max(0, Math.min(1, (rect.height - y) / rect.height));
+
+      // Calculate Hover Time
+      const timeSec = normX * state.audioBuffer.duration;
+
+      // Calculate Hover Frequency
+      const nyquist = state.audioBuffer.sampleRate / 2;
+      let freqHz;
+      if (state.freqScale === 'logarithmic') {
+        freqHz = Math.pow(10, Math.log10(1) + normY * (Math.log10(state.spectrogramHeight) - Math.log10(1))) * (nyquist / state.spectrogramHeight);
+      } else {
+        freqHz = normY * nyquist;
+      }
+
+      // Calculate dB value from cached data
+      const frameIdx = Math.floor(normX * state.spectrogramWidth);
+      const binIdx = Math.floor(normY * state.spectrogramHeight);
+      let dbVal = "--";
+      if (state.spectrogramData[frameIdx] && state.spectrogramData[frameIdx][binIdx] !== undefined) {
+        dbVal = state.spectrogramData[frameIdx][binIdx].toFixed(1);
+      }
+
+      hoverTime.textContent = formatTime(timeSec);
+      hoverFreq.textContent = `${Math.round(freqHz).toLocaleString()} Hz`;
+      hoverDb.textContent = `${dbVal} dB`;
+    });
+
+    specContainer.addEventListener('mouseleave', () => {
+      hoverTime.textContent = "--:--.--";
+      hoverFreq.textContent = "--- Hz";
+      hoverDb.textContent = "--- dB";
+    });
+
+    playPauseBtn.addEventListener('click', () => {
+      if (state.isPlaying) {
+        pauseAudio();
+      } else {
+        playAudio(state.pauseOffset);
+      }
+    });
+
+    stopBtn.addEventListener('click', stopAudio);
+
+    loopBtn.addEventListener('click', () => {
+      state.isLooping = !state.isLooping;
+      loopBtn.classList.toggle('text-blue-400', state.isLooping);
+      loopBtn.classList.toggle('border-blue-500/50', state.isLooping);
+      if (state.sourceNode) state.sourceNode.loop = state.isLooping;
+    });
+
+    speedSelect.addEventListener('change', (e) => {
+      state.playbackRate = parseFloat(e.target.value);
+      if (state.isPlaying) {
+        playAudio(getCurrentTime());
+      }
+    });
+
+    volumeSlider.addEventListener('input', (e) => {
+      const vol = parseFloat(e.target.value);
+      if (state.gainNode) state.gainNode.gain.value = vol;
+      muteBtn.innerHTML = vol === 0 ? '<i class="fa-solid fa-volume-xmark"></i>' : '<i class="fa-solid fa-volume-high"></i>';
+    });
+
+    muteBtn.addEventListener('click', () => {
+      if (volumeSlider.value > 0) {
+        volumeSlider.dataset.prev = volumeSlider.value;
+        volumeSlider.value = 0;
+      } else {
+        volumeSlider.value = volumeSlider.dataset.prev || 0.8;
+      }
+      volumeSlider.dispatchEvent(new Event('input'));
+    });
+
+    // Re-compute Spectrogram Controls
+    windowFuncSelect.addEventListener('change', (e) => state.windowFunc = e.target.value);
+    fftSizeSelect.addEventListener('change', (e) => state.fftSize = parseInt(e.target.value));
+    overlapSelect.addEventListener('change', (e) => {
+      state.overlap = parseFloat(e.target.value);
+      document.getElementById('overlapVal').textContent = `${state.overlap * 100}%`;
+    });
+    colorMapSelect.addEventListener('change', (e) => {
+      state.colorMap = e.target.value;
+      if (state.spectrogramData) renderSpectrogramCanvas();
+    });
+    freqScaleSelect.addEventListener('change', (e) => {
+      state.freqScale = e.target.value;
+      if (state.spectrogramData) renderSpectrogramCanvas();
+    });
+    dbFloorSlider.addEventListener('input', (e) => {
+      state.minDb = parseInt(e.target.value);
+      dbFloorVal.textContent = `${state.minDb} dB`;
+      if (state.spectrogramData) renderSpectrogramCanvas();
+    });
+
+    recomputeBtn.addEventListener('click', async () => {
+      if (!state.audioBuffer) return;
+      showLoading("스펙트로그램 계산 중...", "새로운 STFT 파라미터를 적용하고 있습니다");
+      setTimeout(async () => {
+        await computeSTFTAndRenderSpectrogram();
+        hideLoading();
+      }, 50);
+    });
+
+    function showLoading(title, subtitle) {
+      loadingTitle.textContent = title;
+      loadingSubtitle.textContent = subtitle;
+      loadingOverlay.classList.remove('hidden');
+      loadingOverlay.classList.add('flex');
+    }
+
+    function hideLoading() {
+      loadingOverlay.classList.add('hidden');
+      loadingOverlay.classList.remove('flex');
+    }
+
+    // Auto-resize handler
+    window.addEventListener('resize', () => {
+      if (state.audioBuffer) {
+        resizeAllCanvases();
+        drawWaveform();
+        renderSpectrogramCanvas();
+        updatePlayheadUI(getCurrentTime());
+      }
+    });
+
+    // Generate initial demo audio on startup for immediate user enjoyment
+    window.addEventListener('load', () => {
+      generateDemoAudio();
+    });
+  </script>
+</body>
+</html>
