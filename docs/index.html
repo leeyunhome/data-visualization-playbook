@@ -56,10 +56,26 @@
 
         <div class="cards">
             <a class="card" href="cases/detection-confidence-kde/">
-                <span class="tag">히스토그램 · KDE</span>
-                <h2>실촬영 vs 3DGS 렌더 — 검출 신뢰도 분포 비교</h2>
-                <p>토마토 온실 씬을 3D Gaussian Splatting으로 재구성한 뒤, 동일 시점 실촬영·렌더 프레임에
-                   같은 검출기를 돌려 신뢰도 분포 갭을 비교한다. CSV 업로드로 다른 데이터도 바로 넣어볼 수 있다.</p>
+                <span class="tag">히스토그램 · KDE · 쌍 비교</span>
+                <h2>신뢰도는 차이 없고, 검출 수만 체계적으로 적다</h2>
+                <p>토마토 온실 씬을 3D Gaussian Splatting으로 재구성한 뒤, 동일 시점 실촬영·렌더 24쌍에
+                   같은 검출기를 돌린 결과. 두 분포를 겹쳐 그리면 "비슷하다"로 끝나지만, 쌍을 살려서 보면
+                   24쌍 중 23쌍에서 렌더가 같거나 적다는 일관된 방향이 드러난다.</p>
+            </a>
+
+            <a class="card" href="cases/python-viz/">
+                <span class="tag">Python · seaborn · CLI</span>
+                <h2>Python을 사용한 시각화</h2>
+                <p>CSV를 던지면 박스플롯·히스토그램·ECDF를 뽑아주는 CLI를 만들고 실제로 돌렸다.
+                   세 그래프 모두 "차이 없다"고 말하지만, 같은 데이터를 쌍으로 보면 결론이 뒤집힌다 —
+                   주변분포만 보는 것의 한계.</p>
+            </a>
+
+            <a class="card" href="cases/strip-box-violin/">
+                <span class="tag">Strip · Box · Violin · Swarm</span>
+                <h2>표본 크기에 따라 달라지는 분포 시각화</h2>
+                <p>같은 데이터라도 점이 3,000개면 strip plot이 덩어리가 되고, 150개면 다시 읽힌다.
+                   CSV를 올려 네 가지 표현을 바꿔가며 비교하는 도구.</p>
             </a>
         </div>
 

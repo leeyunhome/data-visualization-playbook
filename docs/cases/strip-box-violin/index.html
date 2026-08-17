@@ -1,0 +1,1156 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Strip, Box & Violin Plot Visualizer</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- SheetJS for XLSX / CSV parsing -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <!-- Plotly.js for Interactive Charts -->
+    <script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        body {
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            background-color: #0f172a;
+            color: #f8fafc;
+        }
+        .glass-panel {
+            background: rgba(30, 41, 59, 0.7);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: rgba(15, 23, 42, 0.6);
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: rgba(100, 116, 139, 0.5);
+            border-radius: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: rgba(148, 163, 184, 0.8);
+        }
+        .drag-over {
+            border-color: #6366f1 !important;
+            background-color: rgba(99, 102, 241, 0.15) !important;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col antialiased">
+
+    <header class="border-b border-slate-800 bg-slate-900/80 sticky top-0 z-50 backdrop-blur-md">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <div class="p-2 bg-indigo-600/20 text-indigo-400 rounded-lg border border-indigo-500/30">
+                    <i data-lucide="bar-chart-2" class="w-6 h-6"></i>
+                </div>
+                <div>
+                    <h1 class="font-bold text-lg text-white leading-tight">Data Visualizer</h1>
+                    <p class="text-xs text-slate-400">Strip, Box, Violin & Swarm Plot Analysis</p>
+                </div>
+            </div>
+            
+            <!-- Quick Sample Dataset Buttons -->
+            <div class="hidden md:flex items-center space-x-2 text-xs">
+                <span class="text-slate-400 mr-1">샘플 데이터:</span>
+                <button onclick="loadSampleData('iris')" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-md border border-slate-700 transition flex items-center space-x-1">
+                    <i data-lucide="flower" class="w-3.5 h-3.5 text-emerald-400"></i>
+                    <span>Iris (붓꽃)</span>
+                </button>
+                <button onclick="loadSampleData('penguins')" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-md border border-slate-700 transition flex items-center space-x-1">
+                    <i data-lucide="bird" class="w-3.5 h-3.5 text-sky-400"></i>
+                    <span>Penguins (펭귄)</span>
+                </button>
+                <button onclick="loadSampleData('tips')" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-md border border-slate-700 transition flex items-center space-x-1">
+                    <i data-lucide="receipt" class="w-3.5 h-3.5 text-amber-400"></i>
+                    <span>Tips (팁)</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <main class="flex-grow max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+
+        <!-- File Upload Area -->
+        <section class="glass-panel rounded-xl p-6 shadow-xl transition-all border border-slate-800 hover:border-slate-700">
+            <div id="drop-zone" class="border-2 border-dashed border-slate-700 hover:border-indigo-500/80 rounded-lg p-8 text-center cursor-pointer transition bg-slate-900/40 hover:bg-indigo-950/20 group">
+                <input type="file" id="file-input" accept=".csv, .xlsx, .xls" class="hidden">
+                <div class="flex flex-col items-center justify-center space-y-3 pointer-events-none">
+                    <div class="p-4 bg-slate-800 group-hover:bg-indigo-600/20 text-slate-400 group-hover:text-indigo-400 rounded-full transition duration-300">
+                        <i data-lucide="upload-cloud" class="w-8 h-8"></i>
+                    </div>
+                    <div>
+                        <p class="text-sm font-semibold text-slate-200">
+                            XLSX 또는 CSV 파일을 이곳에 드래그하거나 <span class="text-indigo-400 underline underline-offset-2">클릭하여 업로드</span>하세요
+                        </p>
+                        <p class="text-xs text-slate-500 mt-1">지원 형식: .xlsx, .xls, .csv (한글 EUC-KR / UTF-8 자동 감지)</p>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- File Info Bar -->
+            <div id="file-info-bar" class="hidden mt-4 flex items-center justify-between p-3 bg-indigo-950/40 border border-indigo-500/30 rounded-lg text-xs">
+                <div class="flex items-center space-x-3">
+                    <i data-lucide="file-spreadsheet" class="w-5 h-5 text-indigo-400"></i>
+                    <div>
+                        <span id="file-name" class="font-medium text-slate-200">filename.xlsx</span>
+                        <span id="file-details" class="text-slate-400 ml-2">(0 rows, 0 columns)</span>
+                    </div>
+                </div>
+                <button onclick="resetData()" class="text-slate-400 hover:text-rose-400 transition flex items-center space-x-1 px-2 py-1 rounded">
+                    <i data-lucide="trash-2" class="w-4 h-4"></i>
+                    <span>초기화</span>
+                </button>
+            </div>
+        </section>
+
+        <section id="config-section" class="glass-panel rounded-xl p-6 shadow-xl hidden space-y-6">
+            <div class="flex flex-col lg:flex-row lg:items-center justify-between border-b border-slate-800 pb-4 gap-4">
+                <h2 class="text-base font-semibold text-slate-200 flex items-center space-x-2">
+                    <i data-lucide="sliders" class="w-5 h-5 text-indigo-400"></i>
+                    <span>변수 선택 및 그래프 설정</span>
+                </h2>
+                
+                <!-- Plot Mode Buttons -->
+                <div class="flex items-center bg-slate-900 p-1 rounded-lg border border-slate-800 text-xs overflow-x-auto custom-scrollbar gap-1">
+                    <button id="mode-combined" onclick="setPlotLayout('combined')" class="px-3 py-1.5 rounded-md font-medium text-white bg-indigo-600 shadow transition whitespace-nowrap">
+                        통합 그래프 (Overlay)
+                    </button>
+                    <button id="mode-violin" onclick="setPlotLayout('violin')" class="px-3 py-1.5 rounded-md font-medium text-slate-400 hover:text-white transition whitespace-nowrap">
+                        Violin Plot 단독
+                    </button>
+                    <button id="mode-box" onclick="setPlotLayout('box')" class="px-3 py-1.5 rounded-md font-medium text-slate-400 hover:text-white transition whitespace-nowrap">
+                        Box Plot 단독
+                    </button>
+                    <button id="mode-strip" onclick="setPlotLayout('strip')" class="px-3 py-1.5 rounded-md font-medium text-slate-400 hover:text-white transition whitespace-nowrap">
+                        Strip Plot 단독
+                    </button>
+                    <button id="mode-swarm" onclick="setPlotLayout('swarm')" class="px-3 py-1.5 rounded-md font-medium text-slate-400 hover:text-white transition whitespace-nowrap">
+                        Swarm Plot
+                    </button>
+                    <button id="mode-sidebyside" onclick="setPlotLayout('sidebyside')" class="px-3 py-1.5 rounded-md font-medium text-slate-400 hover:text-white transition whitespace-nowrap">
+                        나란히 보기 (Side-by-Side)
+                    </button>
+                </div>
+            </div>
+
+            <!-- Column Selection Grid -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <!-- Class Column (X-axis) -->
+                <div class="space-y-1.5 lg:col-span-1">
+                    <label for="class-select" class="block text-xs font-medium text-slate-300 flex items-center space-x-1">
+                        <i data-lucide="layers" class="w-3.5 h-3.5 text-indigo-400"></i>
+                        <span>Class (그룹 / 범주형 컬럼)</span>
+                    </label>
+                    <select id="class-select" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                        <option value="">컬럼 선택...</option>
+                    </select>
+                </div>
+
+                <!-- Feature Column (Multi-Selection Checkbox List) -->
+                <div class="space-y-1.5 lg:col-span-2">
+                    <div class="flex items-center justify-between">
+                        <label class="block text-xs font-medium text-slate-300 flex items-center space-x-1">
+                            <i data-lucide="activity" class="w-3.5 h-3.5 text-emerald-400"></i>
+                            <span>Feature (수치형 컬럼 - 다중 선택 가능)</span>
+                        </label>
+                        <div class="space-x-2 text-xs">
+                            <button id="btn-select-all" type="button" class="text-indigo-400 hover:text-indigo-300 font-medium transition">전체 선택</button>
+                            <span class="text-slate-600">|</span>
+                            <button id="btn-deselect-all" type="button" class="text-slate-400 hover:text-slate-200 transition">전체 해제</button>
+                        </div>
+                    </div>
+                    <div id="feature-checkbox-container" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 max-h-32 overflow-y-auto custom-scrollbar grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                        <span class="text-slate-500 italic p-1">파일을 업로드하세요</span>
+                    </div>
+                </div>
+
+                <!-- Color Palette & Orientation Selection -->
+                <div class="space-y-1.5 lg:col-span-1">
+                    <label for="palette-select" class="block text-xs font-medium text-slate-300 flex items-center space-x-1">
+                        <i data-lucide="palette" class="w-3.5 h-3.5 text-pink-400"></i>
+                        <span>색상 팔레트</span>
+                    </label>
+                    <select id="palette-select" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                        <option value="Set2">Set 2 (Soft Pastels)</option>
+                        <option value="Plotly">Plotly Default</option>
+                        <option value="Viridis">Viridis</option>
+                        <option value="Dark2">Dark 2</option>
+                        <option value="Pastel1">Pastel</option>
+                    </select>
+
+                    <div class="pt-2">
+                        <label for="orientation-select" class="block text-xs font-medium text-slate-300 flex items-center space-x-1">
+                            <i data-lucide="compass" class="w-3.5 h-3.5 text-amber-400"></i>
+                            <span>그래프 방향</span>
+                        </label>
+                        <select id="orientation-select" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 mt-1">
+                            <option value="v">수직 (Vertical)</option>
+                            <option value="h">수평 (Horizontal)</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2 border-t border-slate-800/60">
+                <!-- Jitter Amount Slider -->
+                <div class="space-y-1">
+                    <div class="flex justify-between text-xs text-slate-400">
+                        <span>점 분산 정도 (Jitter)</span>
+                        <span id="jitter-val">0.5</span>
+                    </div>
+                    <input type="range" id="jitter-slider" min="0" max="1" step="0.1" value="0.5" class="w-full accent-indigo-500 bg-slate-800 h-1.5 rounded-lg appearance-none cursor-pointer">
+                </div>
+
+                <!-- Point Size Slider -->
+                <div class="space-y-1">
+                    <div class="flex justify-between text-xs text-slate-400">
+                        <span>점 크기 (Point Size)</span>
+                        <span id="pointsize-val">6 px</span>
+                    </div>
+                    <input type="range" id="pointsize-slider" min="2" max="14" step="1" value="6" class="w-full accent-indigo-500 bg-slate-800 h-1.5 rounded-lg appearance-none cursor-pointer">
+                </div>
+
+                <!-- Multi-layer Checkboxes for Overlay Mode -->
+                <div class="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-slate-300 pt-1">
+                    <span class="w-full text-slate-400 font-medium text-[11px] -mb-1">오버레이 표시 레이어 (Layer Controls):</span>
+                    <label class="flex items-center space-x-1.5 cursor-pointer select-none">
+                        <input type="checkbox" id="show-violin-check" checked class="rounded bg-slate-900 border-slate-700 text-indigo-600 focus:ring-indigo-500 w-4 h-4">
+                        <span class="text-purple-300 font-medium">바이올린 (Violin)</span>
+                    </label>
+                    <label class="flex items-center space-x-1.5 cursor-pointer select-none">
+                        <input type="checkbox" id="show-box-check" checked class="rounded bg-slate-900 border-slate-700 text-indigo-600 focus:ring-indigo-500 w-4 h-4">
+                        <span class="text-sky-300 font-medium">박스 (Box)</span>
+                    </label>
+                    <label class="flex items-center space-x-1.5 cursor-pointer select-none">
+                        <input type="checkbox" id="box-points-check" checked class="rounded bg-slate-900 border-slate-700 text-indigo-600 focus:ring-indigo-500 w-4 h-4">
+                        <span class="text-emerald-300 font-medium">스트립 점 (Strip)</span>
+                    </label>
+                    <label class="flex items-center space-x-1.5 cursor-pointer select-none">
+                        <input type="checkbox" id="show-mean-check" checked class="rounded bg-slate-900 border-slate-700 text-indigo-600 focus:ring-indigo-500 w-4 h-4">
+                        <span>평균 표시 (Mean)</span>
+                    </label>
+                </div>
+            </div>
+        </section>
+
+        <!-- Chart Display Area -->
+        <section id="plot-section" class="hidden">
+            <div id="charts-container" class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <!-- Dynamic Feature Chart Cards injected here -->
+            </div>
+        </section>
+
+        <!-- Group Statistics Summary Table Section -->
+        <section id="stats-section" class="hidden glass-panel rounded-xl p-6 shadow-xl border border-slate-800 space-y-4">
+            <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                <h3 class="text-sm font-semibold text-slate-200 flex items-center space-x-2">
+                    <i data-lucide="calculator" class="w-4 h-4 text-emerald-400"></i>
+                    <span>클래스 및 피처별 기술 통계 요약 (Descriptive Statistics)</span>
+                </h3>
+                <button onclick="exportStatsToCSV()" class="text-xs text-indigo-400 hover:text-indigo-300 flex items-center space-x-1 px-2 py-1 bg-indigo-950/40 hover:bg-indigo-900/50 rounded border border-indigo-800/50 transition">
+                    <i data-lucide="download" class="w-3.5 h-3.5"></i>
+                    <span>통계 내보내기 (CSV)</span>
+                </button>
+            </div>
+
+            <div class="overflow-x-auto custom-scrollbar">
+                <table class="w-full text-xs text-left text-slate-300">
+                    <thead class="text-xs text-slate-400 uppercase bg-slate-900/80 border-b border-slate-800">
+                        <tr>
+                            <th scope="col" class="px-4 py-3">Feature (특성)</th>
+                            <th scope="col" class="px-4 py-3">Class (그룹)</th>
+                            <th scope="col" class="px-4 py-3 text-right">Count (N)</th>
+                            <th scope="col" class="px-4 py-3 text-right">Mean (평균)</th>
+                            <th scope="col" class="px-4 py-3 text-right">Std Dev (표준편차)</th>
+                            <th scope="col" class="px-4 py-3 text-right">Min (최소)</th>
+                            <th scope="col" class="px-4 py-3 text-right">Q1 (25%)</th>
+                            <th scope="col" class="px-4 py-3 text-right">Median (중앙값)</th>
+                            <th scope="col" class="px-4 py-3 text-right">Q3 (75%)</th>
+                            <th scope="col" class="px-4 py-3 text-right">Max (최대)</th>
+                            <th scope="col" class="px-4 py-3 text-right">IQR</th>
+                        </tr>
+                    </thead>
+                    <tbody id="stats-tbody" class="divide-y divide-slate-800">
+                        <!-- Stat rows inserted via JS -->
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section id="table-section" class="hidden glass-panel rounded-xl p-6 shadow-xl border border-slate-800 space-y-4">
+            <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                <h3 class="text-sm font-semibold text-slate-200 flex items-center space-x-2">
+                    <i data-lucide="table" class="w-4 h-4 text-sky-400"></i>
+                    <span>원본 데이터 미리보기 (Data Preview)</span>
+                </h3>
+                <span id="preview-count" class="text-xs text-slate-400">상위 10개 행 표시</span>
+            </div>
+
+            <div class="overflow-x-auto custom-scrollbar max-h-64">
+                <table class="w-full text-xs text-left text-slate-300">
+                    <thead id="preview-thead" class="text-xs text-slate-400 uppercase bg-slate-900/90 sticky top-0 border-b border-slate-800">
+                        <!-- Dynamic Headings -->
+                    </thead>
+                    <tbody id="preview-tbody" class="divide-y divide-slate-800">
+                        <!-- Dynamic Rows -->
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Custom Toast Message Container -->
+    <div id="toast-container" class="fixed bottom-5 right-5 z-50 flex flex-col space-y-2 pointer-events-none"></div>
+
+    <script>
+        // Global Application State
+        const state = {
+            rawRows: [],
+            columns: [],
+            numericColumns: [],
+            categoricalColumns: [],
+            selectedClass: '',
+            selectedFeatures: [],
+            plotLayout: 'combined', // 'combined', 'violin', 'swarm', 'sidebyside', 'box', 'strip'
+            palette: 'Set2',
+            orientation: 'v',
+            jitter: 0.5,
+            pointSize: 6,
+            showViolin: true,  // Violin plot layer toggle
+            showBox: true,     // Box plot layer toggle
+            showPoints: true,  // Strip points layer toggle
+            showMean: true,    // Mean line toggle
+            statsSummary: []
+        };
+
+        // Color Palettes Mapping
+        const colorPalettes = {
+            Set2: ['#66c2a5', '#fc8d62', '#8da0cb', '#e78ac3', '#a6d854', '#ffd92f', '#e5c494', '#b3b3b3'],
+            Plotly: ['#636efa', '#EF553B', '#00cc96', '#ab63fa', '#FFA15A', '#19d3f3', '#FF6692', '#B6E880'],
+            Viridis: ['#440154', '#3b528b', '#21908d', '#5dc963', '#fde725'],
+            Dark2: ['#1b9e77', '#d95f02', '#7570b3', '#e7298a', '#66a61e', '#e6ab02', '#a6761d', '#666666'],
+            Pastel1: ['#fbb4ae', '#b3cde3', '#ccebc5', '#decbe4', '#fed9a6', '#ffffcc', '#e5d8bd', '#fddaec']
+        };
+
+        document.addEventListener('DOMContentLoaded', () => {
+            if (window.lucide) lucide.createIcons();
+            setupDragAndDrop();
+            setupEventListeners();
+        });
+
+        function setupDragAndDrop() {
+            const dropZone = document.getElementById('drop-zone');
+            const fileInput = document.getElementById('file-input');
+
+            // Prevent browser default drop behavior everywhere
+            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+                window.addEventListener(eventName, (e) => e.preventDefault(), false);
+                document.body.addEventListener(eventName, (e) => e.preventDefault(), false);
+            });
+
+            // Click to upload
+            dropZone.addEventListener('click', () => fileInput.click());
+
+            // Drag hover effects
+            ['dragenter', 'dragover'].forEach(eventName => {
+                dropZone.addEventListener(eventName, (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    dropZone.classList.add('drag-over');
+                }, false);
+            });
+
+            ['dragleave', 'drop'].forEach(eventName => {
+                dropZone.addEventListener(eventName, (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    dropZone.classList.remove('drag-over');
+                }, false);
+            });
+
+            // Handle dropped file
+            dropZone.addEventListener('drop', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                dropZone.classList.remove('drag-over');
+                const dt = e.dataTransfer;
+                if (dt && dt.files && dt.files.length > 0) {
+                    handleFile(dt.files[0]);
+                }
+            });
+
+            // Handle selected file via dialog
+            fileInput.addEventListener('change', (e) => {
+                if (e.target.files && e.target.files.length > 0) {
+                    handleFile(e.target.files[0]);
+                }
+            });
+        }
+
+        function handleFile(file) {
+            if (!file) return;
+            const fileName = file.name;
+            const ext = fileName.split('.').pop().toLowerCase();
+
+            if (!['csv', 'xlsx', 'xls'].includes(ext)) {
+                showToast('지원되지 않는 파일 형식입니다. (.csv, .xlsx, .xls 만 지원)', 'error');
+                return;
+            }
+
+            const reader = new FileReader();
+
+            if (ext === 'csv') {
+                reader.onload = function(e) {
+                    const buffer = e.target.result;
+                    let text = '';
+                    try {
+                        // Try UTF-8 decoding first
+                        const decoderUtf8 = new TextDecoder('utf-8', { fatal: true });
+                        text = decoderUtf8.decode(buffer);
+                    } catch (err) {
+                        // Fallback to EUC-KR for Korean Windows CSV files
+                        const decoderEucKr = new TextDecoder('euc-kr');
+                        text = decoderEucKr.decode(buffer);
+                    }
+
+                    try {
+                        const workbook = XLSX.read(text, { type: 'string' });
+                        const firstSheetName = workbook.SheetNames[0];
+                        const worksheet = workbook.Sheets[firstSheetName];
+                        const json = XLSX.utils.sheet_to_json(worksheet, { defval: null });
+                        if (!json || json.length === 0) {
+                            showToast('데이터가 비어있는 파일입니다.', 'error');
+                            return;
+                        }
+                        processDataset(json, fileName);
+                    } catch (parseErr) {
+                        console.error(parseErr);
+                        showToast('CSV 파일 파싱 중 오류가 발생했습니다.', 'error');
+                    }
+                };
+                reader.readAsArrayBuffer(file);
+            } else {
+                // XLSX or XLS binary processing
+                reader.onload = function(e) {
+                    try {
+                        const data = new Uint8Array(e.target.result);
+                        const workbook = XLSX.read(data, { type: 'array' });
+                        const firstSheetName = workbook.SheetNames[0];
+                        const worksheet = workbook.Sheets[firstSheetName];
+                        const json = XLSX.utils.sheet_to_json(worksheet, { defval: null });
+                        if (!json || json.length === 0) {
+                            showToast('데이터가 비어있는 파일입니다.', 'error');
+                            return;
+                        }
+                        processDataset(json, fileName);
+                    } catch (parseErr) {
+                        console.error(parseErr);
+                        showToast('엑셀 파일 파싱 중 오류가 발생했습니다.', 'error');
+                    }
+                };
+                reader.readAsArrayBuffer(file);
+            }
+        }
+
+        function processDataset(rows, fileName) {
+            if (!rows || rows.length === 0) return;
+
+            state.rawRows = rows;
+            const allCols = Object.keys(rows[0]);
+            state.columns = allCols;
+
+            state.numericColumns = [];
+            state.categoricalColumns = [];
+
+            allCols.forEach(col => {
+                let numCount = 0;
+                let validCount = 0;
+                rows.forEach(r => {
+                    const val = r[col];
+                    if (val !== null && val !== undefined && val !== '') {
+                        validCount++;
+                        if (!isNaN(Number(val))) numCount++;
+                    }
+                });
+                if (validCount > 0 && numCount / validCount > 0.6) {
+                    state.numericColumns.push(col);
+                } else {
+                    state.categoricalColumns.push(col);
+                }
+            });
+
+            // Populate Class dropdown
+            const classSelect = document.getElementById('class-select');
+            classSelect.innerHTML = '<option value="">클래스 컬럼 선택...</option>';
+            allCols.forEach(col => {
+                const opt = document.createElement('option');
+                opt.value = col;
+                const isCat = state.categoricalColumns.includes(col);
+                opt.textContent = `${col} ${isCat ? '[범주형]' : '[수치형]'}`;
+                classSelect.appendChild(opt);
+            });
+
+            // Default select first categorical or first column
+            if (state.categoricalColumns.length > 0) {
+                state.selectedClass = state.categoricalColumns[0];
+                classSelect.value = state.categoricalColumns[0];
+            } else if (allCols.length > 0) {
+                state.selectedClass = allCols[0];
+                classSelect.value = allCols[0];
+            }
+
+            // Populate Feature Checkboxes
+            populateFeatureCheckboxes();
+
+            // Reveal configuration & plot panels
+            document.getElementById('file-name').textContent = fileName;
+            document.getElementById('file-details').textContent = `(${rows.length.toLocaleString()} 행, ${allCols.length} 열)`;
+            document.getElementById('file-info-bar').classList.remove('hidden');
+            document.getElementById('config-section').classList.remove('hidden');
+            document.getElementById('plot-section').classList.remove('hidden');
+            document.getElementById('stats-section').classList.remove('hidden');
+            document.getElementById('table-section').classList.remove('hidden');
+
+            renderPreviewTable();
+            updateVisualization();
+            showToast(`${fileName} 파일이 성공적으로 로드되었습니다!`, 'success');
+        }
+
+        function populateFeatureCheckboxes() {
+            const container = document.getElementById('feature-checkbox-container');
+            container.innerHTML = '';
+
+            const targetCols = state.numericColumns.length > 0 ? state.numericColumns : state.columns;
+
+            targetCols.forEach((col, idx) => {
+                const label = document.createElement('label');
+                label.className = 'flex items-center space-x-2 text-slate-300 hover:text-white cursor-pointer select-none bg-slate-800/40 hover:bg-slate-800 p-1.5 rounded transition border border-slate-800';
+                
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.value = col;
+                checkbox.className = 'feature-checkbox rounded bg-slate-900 border-slate-700 text-indigo-600 focus:ring-indigo-500 w-4 h-4';
+                
+                // Select up to 3 numeric columns by default
+                if (idx < 3) {
+                    checkbox.checked = true;
+                }
+
+                checkbox.addEventListener('change', () => {
+                    updateSelectedFeaturesFromUI();
+                    updateVisualization();
+                });
+
+                const span = document.createElement('span');
+                span.className = 'truncate';
+                span.textContent = col;
+
+                label.appendChild(checkbox);
+                label.appendChild(span);
+                container.appendChild(label);
+            });
+
+            updateSelectedFeaturesFromUI();
+        }
+
+        function updateSelectedFeaturesFromUI() {
+            const checked = document.querySelectorAll('.feature-checkbox:checked');
+            state.selectedFeatures = Array.from(checked).map(cb => cb.value);
+        }
+
+        function setPlotLayout(mode) {
+            state.plotLayout = mode;
+
+            const violinCheck = document.getElementById('show-violin-check');
+            const boxCheck = document.getElementById('show-box-check');
+            const pointsCheck = document.getElementById('box-points-check');
+
+            if (mode === 'combined') {
+                // Default combined mode enables Violin, Box, and Strip points for comprehensive overlay
+                violinCheck.checked = true; state.showViolin = true;
+                boxCheck.checked = true; state.showBox = true;
+                pointsCheck.checked = true; state.showPoints = true;
+            } else if (mode === 'violin') {
+                violinCheck.checked = true; state.showViolin = true;
+                boxCheck.checked = true; state.showBox = true;
+                pointsCheck.checked = false; state.showPoints = false;
+            } else if (mode === 'box') {
+                violinCheck.checked = false; state.showViolin = false;
+                boxCheck.checked = true; state.showBox = true;
+                pointsCheck.checked = false; state.showPoints = false;
+            } else if (mode === 'strip') {
+                violinCheck.checked = false; state.showViolin = false;
+                boxCheck.checked = false; state.showBox = false;
+                pointsCheck.checked = true; state.showPoints = true;
+            } else if (mode === 'swarm') {
+                violinCheck.checked = true; state.showViolin = true;
+                boxCheck.checked = false; state.showBox = false;
+                pointsCheck.checked = true; state.showPoints = true;
+            }
+
+            const modes = ['combined', 'violin', 'swarm', 'sidebyside', 'box', 'strip'];
+            modes.forEach(m => {
+                const btn = document.getElementById(`mode-${m}`);
+                if (btn) {
+                    if (m === mode) {
+                        btn.className = 'px-3 py-1.5 rounded-md font-medium text-white bg-indigo-600 shadow transition whitespace-nowrap';
+                    } else {
+                        btn.className = 'px-3 py-1.5 rounded-md font-medium text-slate-400 hover:text-white transition whitespace-nowrap';
+                    }
+                }
+            });
+            updateVisualization();
+        }
+
+        function setupEventListeners() {
+            document.getElementById('class-select').addEventListener('change', (e) => {
+                state.selectedClass = e.target.value;
+                updateVisualization();
+            });
+
+            document.getElementById('btn-select-all').addEventListener('click', () => {
+                document.querySelectorAll('.feature-checkbox').forEach(cb => cb.checked = true);
+                updateSelectedFeaturesFromUI();
+                updateVisualization();
+            });
+
+            document.getElementById('btn-deselect-all').addEventListener('click', () => {
+                document.querySelectorAll('.feature-checkbox').forEach(cb => cb.checked = false);
+                updateSelectedFeaturesFromUI();
+                updateVisualization();
+            });
+
+            document.getElementById('palette-select').addEventListener('change', (e) => {
+                state.palette = e.target.value;
+                updateVisualization();
+            });
+
+            document.getElementById('orientation-select').addEventListener('change', (e) => {
+                state.orientation = e.target.value;
+                updateVisualization();
+            });
+
+            document.getElementById('jitter-slider').addEventListener('input', (e) => {
+                state.jitter = parseFloat(e.target.value);
+                document.getElementById('jitter-val').textContent = state.jitter;
+                updateVisualization();
+            });
+
+            document.getElementById('pointsize-slider').addEventListener('input', (e) => {
+                state.pointSize = parseInt(e.target.value, 10);
+                document.getElementById('pointsize-val').textContent = `${state.pointSize} px`;
+                updateVisualization();
+            });
+
+            document.getElementById('show-violin-check').addEventListener('change', (e) => {
+                state.showViolin = e.target.checked;
+                updateVisualization();
+            });
+
+            document.getElementById('show-box-check').addEventListener('change', (e) => {
+                state.showBox = e.target.checked;
+                updateVisualization();
+            });
+
+            document.getElementById('box-points-check').addEventListener('change', (e) => {
+                state.showPoints = e.target.checked;
+                updateVisualization();
+            });
+
+            document.getElementById('show-mean-check').addEventListener('change', (e) => {
+                state.showMean = e.target.checked;
+                updateVisualization();
+            });
+        }
+
+        function updateVisualization() {
+            const container = document.getElementById('charts-container');
+
+            if (!state.selectedClass || state.selectedFeatures.length === 0) {
+                container.innerHTML = `<div class="col-span-full text-center py-12 text-slate-500 glass-panel rounded-xl">클래스 컬럼과 하나 이상의 특성(Feature) 컬럼을 선택해주세요.</div>`;
+                document.getElementById('stats-tbody').innerHTML = '';
+                return;
+            }
+
+            container.innerHTML = ''; // Clear previous charts
+
+            const colors = colorPalettes[state.palette] || colorPalettes.Set2;
+            const isHoriz = state.orientation === 'h';
+            const allFeaturesStats = [];
+
+            state.selectedFeatures.forEach((feat, featIdx) => {
+                const groupsMap = new Map();
+
+                state.rawRows.forEach(row => {
+                    const rawClassVal = row[state.selectedClass];
+                    const rawFeatVal = row[feat];
+
+                    if (rawClassVal !== null && rawClassVal !== undefined && rawFeatVal !== null && rawFeatVal !== undefined) {
+                        const featNum = Number(rawFeatVal);
+                        if (!isNaN(featNum)) {
+                            const classStr = String(rawClassVal);
+                            if (!groupsMap.has(classStr)) {
+                                groupsMap.set(classStr, []);
+                            }
+                            groupsMap.get(classStr).push(featNum);
+                        }
+                    }
+                });
+
+                if (groupsMap.size === 0) return;
+
+                // Accumulate statistics
+                calculateStatisticsForFeature(feat, groupsMap, allFeaturesStats);
+
+                const groupNames = Array.from(groupsMap.keys());
+
+                if (state.plotLayout === 'sidebyside') {
+                    // Create card for Box Plot & Strip Plot Side by Side
+                    const cardBox = createChartCard(`plot-box-${featIdx}`);
+                    const cardStrip = createChartCard(`plot-strip-${featIdx}`);
+                    container.appendChild(cardBox);
+                    container.appendChild(cardStrip);
+
+                    const boxTraces = groupNames.map((grp, idx) => ({
+                        type: 'box', name: grp, [isHoriz ? 'x' : 'y']: groupsMap.get(grp),
+                        boxpoints: false, boxmean: state.showMean ? 'sd' : false,
+                        marker: { color: colors[idx % colors.length] },
+                        fillcolor: colors[idx % colors.length] + '33',
+                        line: { color: colors[idx % colors.length], width: 2 }
+                    }));
+
+                    const stripTraces = groupNames.map((grp, idx) => ({
+                        type: 'box', name: grp, [isHoriz ? 'x' : 'y']: groupsMap.get(grp),
+                        boxpoints: 'all', pointpos: 0, fillcolor: 'rgba(0,0,0,0)', line: { color: 'transparent' },
+                        jitter: state.jitter, marker: { color: colors[idx % colors.length], size: state.pointSize, opacity: 0.85 }
+                    }));
+
+                    renderPlotly(`plot-box-${featIdx}`, boxTraces, feat, `Box Plot: ${feat}`);
+                    renderPlotly(`plot-strip-${featIdx}`, stripTraces, feat, `Strip Plot: ${feat}`);
+
+                } else {
+                    const card = createChartCard(`plot-main-${featIdx}`);
+                    container.appendChild(card);
+
+                    let traces = [];
+                    
+                    // Unified Overlay Rendering Engine
+                    if (state.plotLayout === 'combined' || state.plotLayout === 'violin') {
+                        if (state.showViolin) {
+                            // Render using Plotly Violin with optional Box and Strip overlays
+                            traces = groupNames.map((grp, idx) => ({
+                                type: 'violin',
+                                name: grp,
+                                [isHoriz ? 'x' : 'y']: groupsMap.get(grp),
+                                points: state.showPoints ? 'all' : false,
+                                jitter: state.jitter,
+                                pointpos: 0,
+                                box: {
+                                    visible: state.showBox,
+                                    width: 0.2,
+                                    fillcolor: colors[idx % colors.length] + '60'
+                                },
+                                meanline: { visible: state.showMean },
+                                marker: { color: colors[idx % colors.length], size: state.pointSize, opacity: 0.85 },
+                                line: { color: colors[idx % colors.length], width: 1.8 },
+                                fillcolor: colors[idx % colors.length] + '35'
+                            }));
+                        } else {
+                            // Render standard Box + Strip Overlay
+                            traces = groupNames.map((grp, idx) => ({
+                                type: 'box',
+                                name: grp,
+                                [isHoriz ? 'x' : 'y']: groupsMap.get(grp),
+                                boxpoints: state.showPoints ? 'all' : (state.showBox ? 'outliers' : false),
+                                jitter: state.jitter,
+                                pointpos: 0,
+                                boxmean: state.showMean ? 'sd' : false,
+                                marker: { color: colors[idx % colors.length], size: state.pointSize, opacity: 0.85 },
+                                line: { color: state.showBox ? colors[idx % colors.length] : 'transparent', width: 2 },
+                                fillcolor: state.showBox ? colors[idx % colors.length] + '35' : 'rgba(0,0,0,0)'
+                            }));
+                        }
+                    } else if (state.plotLayout === 'swarm') {
+                        traces = groupNames.map((grp, idx) => ({
+                            type: 'violin',
+                            name: grp,
+                            [isHoriz ? 'x' : 'y']: groupsMap.get(grp),
+                            points: 'all',
+                            pointpos: 0,
+                            jitter: Math.min(1.0, Math.max(0.3, state.jitter * 1.5)),
+                            scalemode: 'width',
+                            side: 'both',
+                            box: { visible: state.showBox },
+                            meanline: { visible: state.showMean },
+                            marker: { color: colors[idx % colors.length], size: state.pointSize, opacity: 0.9 },
+                            line: { color: 'transparent' },
+                            fillcolor: 'rgba(0,0,0,0)'
+                        }));
+                    } else if (state.plotLayout === 'box') {
+                        traces = groupNames.map((grp, idx) => ({
+                            type: 'box', name: grp, [isHoriz ? 'x' : 'y']: groupsMap.get(grp),
+                            boxpoints: state.showPoints ? 'all' : 'outliers',
+                            jitter: state.jitter,
+                            boxmean: state.showMean ? 'sd' : false,
+                            marker: { color: colors[idx % colors.length], size: state.pointSize },
+                            fillcolor: colors[idx % colors.length] + '35', line: { color: colors[idx % colors.length], width: 2 }
+                        }));
+                    } else if (state.plotLayout === 'strip') {
+                        traces = groupNames.map((grp, idx) => ({
+                            type: 'box', name: grp, [isHoriz ? 'x' : 'y']: groupsMap.get(grp),
+                            boxpoints: 'all', pointpos: 0, fillcolor: 'rgba(0,0,0,0)', line: { color: 'transparent' },
+                            jitter: state.jitter, marker: { color: colors[idx % colors.length], size: state.pointSize, opacity: 0.85 }
+                        }));
+                    }
+
+                    renderPlotly(`plot-main-${featIdx}`, traces, feat, `${feat} (${state.plotLayout.toUpperCase()})`);
+                }
+            });
+
+            state.statsSummary = allFeaturesStats;
+            renderStatsTable(allFeaturesStats);
+        }
+
+        function createChartCard(elementId) {
+            const card = document.createElement('div');
+            card.className = 'glass-panel rounded-xl p-5 shadow-xl border border-slate-800 relative';
+            card.innerHTML = `<div id="${elementId}" class="w-full h-[450px]"></div>`;
+            return card;
+        }
+
+        function renderPlotly(targetId, traces, featureName, titleText) {
+            const isHoriz = state.orientation === 'h';
+
+            const layout = {
+                title: {
+                    text: titleText,
+                    font: { family: 'Inter, sans-serif', size: 15, color: '#f1f5f9' },
+                    x: 0.02,
+                    xanchor: 'left'
+                },
+                paper_bgcolor: 'rgba(0,0,0,0)',
+                plot_bgcolor: 'rgba(15, 23, 42, 0.4)',
+                font: { color: '#94a3b8', family: 'Inter, sans-serif' },
+                margin: { t: 50, r: 25, l: 55, b: 55 },
+                showlegend: true,
+                legend: {
+                    font: { color: '#cbd5e1' },
+                    bgcolor: 'rgba(30, 41, 59, 0.5)',
+                    bordercolor: 'rgba(255, 255, 255, 0.1)',
+                    borderwidth: 1
+                },
+                xaxis: {
+                    title: { text: isHoriz ? featureName : state.selectedClass, font: { color: '#e2e8f0', size: 12 } },
+                    gridcolor: '#1e293b',
+                    zerolinecolor: '#334155',
+                    tickfont: { color: '#cbd5e1' }
+                },
+                yaxis: {
+                    title: { text: isHoriz ? state.selectedClass : featureName, font: { color: '#e2e8f0', size: 12 } },
+                    gridcolor: '#1e293b',
+                    zerolinecolor: '#334155',
+                    tickfont: { color: '#cbd5e1' }
+                }
+            };
+
+            const config = {
+                responsive: true,
+                displayModeBar: true,
+                displaylogo: false,
+                modeBarButtonsToRemove: ['lasso2d', 'select2d']
+            };
+
+            Plotly.newPlot(targetId, traces, layout, config);
+        }
+
+        function getQuantile(sorted, q) {
+            if (!sorted || sorted.length === 0) return 0;
+            const pos = (sorted.length - 1) * q;
+            const base = Math.floor(pos);
+            const rest = pos - base;
+            if (sorted[base + 1] !== undefined) {
+                return sorted[base] + rest * (sorted[base + 1] - sorted[base]);
+            } else {
+                return sorted[base];
+            }
+        }
+
+        function calculateStatisticsForFeature(featureName, groupsMap, statsArray) {
+            groupsMap.forEach((vals, grp) => {
+                if (vals.length === 0) return;
+
+                const sorted = [...vals].sort((a, b) => a - b);
+                const count = sorted.length;
+                const sum = sorted.reduce((a, b) => a + b, 0);
+                const mean = sum / count;
+
+                const variance = sorted.reduce((acc, val) => acc + Math.pow(val - mean, 2), 0) / (count > 1 ? count - 1 : 1);
+                const stdDev = Math.sqrt(variance);
+
+                const min = sorted[0];
+                const max = sorted[count - 1];
+
+                const q1 = getQuantile(sorted, 0.25);
+                const median = getQuantile(sorted, 0.50);
+                const q3 = getQuantile(sorted, 0.75);
+                const iqr = q3 - q1;
+
+                statsArray.push({
+                    feature: featureName,
+                    group: grp,
+                    count,
+                    mean: mean.toFixed(3),
+                    stdDev: stdDev.toFixed(3),
+                    min: min.toFixed(3),
+                    q1: q1.toFixed(3),
+                    median: median.toFixed(3),
+                    q3: q3.toFixed(3),
+                    max: max.toFixed(3),
+                    iqr: iqr.toFixed(3)
+                });
+            });
+        }
+
+        function renderStatsTable(stats) {
+            const tbody = document.getElementById('stats-tbody');
+            tbody.innerHTML = '';
+
+            stats.forEach(row => {
+                const tr = document.createElement('tr');
+                tr.className = 'hover:bg-slate-800/50 transition';
+                tr.innerHTML = `
+                    <td class="px-4 py-2.5 font-medium text-indigo-400">${escapeHtml(row.feature)}</td>
+                    <td class="px-4 py-2.5 text-slate-200">${escapeHtml(row.group)}</td>
+                    <td class="px-4 py-2.5 text-right font-mono text-indigo-300">${row.count}</td>
+                    <td class="px-4 py-2.5 text-right font-mono">${row.mean}</td>
+                    <td class="px-4 py-2.5 text-right font-mono text-slate-400">${row.stdDev}</td>
+                    <td class="px-4 py-2.5 text-right font-mono text-slate-400">${row.min}</td>
+                    <td class="px-4 py-2.5 text-right font-mono">${row.q1}</td>
+                    <td class="px-4 py-2.5 text-right font-mono text-emerald-400 font-semibold">${row.median}</td>
+                    <td class="px-4 py-2.5 text-right font-mono">${row.q3}</td>
+                    <td class="px-4 py-2.5 text-right font-mono text-slate-400">${row.max}</td>
+                    <td class="px-4 py-2.5 text-right font-mono text-amber-300">${row.iqr}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function exportStatsToCSV() {
+            if (!state.statsSummary || state.statsSummary.length === 0) {
+                showToast('내보낼 통계 데이터가 없습니다.', 'error');
+                return;
+            }
+
+            const headers = ['Feature', 'Class', 'Count', 'Mean', 'StdDev', 'Min', 'Q1', 'Median', 'Q3', 'Max', 'IQR'];
+            const csvRows = [headers.join(',')];
+
+            state.statsSummary.forEach(row => {
+                const vals = [
+                    `"${row.feature}"`, `"${row.group}"`, row.count, row.mean, row.stdDev, row.min, row.q1, row.median, row.q3, row.max, row.iqr
+                ];
+                csvRows.push(vals.join(','));
+            });
+
+            const csvContent = "data:text/csv;charset=utf-8,\uFEFF" + csvRows.join('\n');
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement('a');
+            link.setAttribute('href', encodedUri);
+            link.setAttribute('download', `stats_summary_${state.selectedClass}.csv`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+
+            showToast('통계 요약표가 CSV 파일로 다운로드되었습니다.', 'success');
+        }
+
+        function renderPreviewTable() {
+            const thead = document.getElementById('preview-thead');
+            const tbody = document.getElementById('preview-tbody');
+
+            thead.innerHTML = '';
+            tbody.innerHTML = '';
+
+            const trHead = document.createElement('tr');
+            state.columns.forEach(col => {
+                const isNum = state.numericColumns.includes(col);
+                const th = document.createElement('th');
+                th.className = 'px-4 py-2.5 text-left';
+                th.innerHTML = `
+                    <div class="flex items-center space-x-1">
+                        <span>${escapeHtml(col)}</span>
+                        <span class="text-[10px] px-1.5 py-0.5 rounded ${isNum ? 'bg-emerald-950 text-emerald-400 border border-emerald-800/50' : 'bg-slate-800 text-slate-400'}">
+                            ${isNum ? 'num' : 'str'}
+                        </span>
+                    </div>
+                `;
+                trHead.appendChild(th);
+            });
+            thead.appendChild(trHead);
+
+            const previewRows = state.rawRows.slice(0, 10);
+            previewRows.forEach(row => {
+                const tr = document.createElement('tr');
+                tr.className = 'hover:bg-slate-800/40 transition';
+                state.columns.forEach(col => {
+                    const td = document.createElement('td');
+                    td.className = 'px-4 py-2 whitespace-nowrap text-slate-300 font-mono text-[11px]';
+                    td.textContent = row[col] !== undefined && row[col] !== null ? row[col] : '-';
+                    tr.appendChild(td);
+                });
+                tbody.appendChild(tr);
+            });
+
+            document.getElementById('preview-count').textContent = `전체 ${state.rawRows.length.toLocaleString()}행 중 상위 ${previewRows.length}개 표시`;
+        }
+
+        function loadSampleData(datasetKey) {
+            let sampleRows = [];
+            let name = '';
+
+            if (datasetKey === 'iris') {
+                name = 'iris_dataset.csv';
+                const species = ['setosa', 'versicolor', 'virginica'];
+                for (let i = 0; i < 150; i++) {
+                    const sp = species[Math.floor(i / 50)];
+                    let sl, sw, pl, pw;
+                    if (sp === 'setosa') {
+                        sl = 4.3 + Math.random() * 1.5;
+                        sw = 2.3 + Math.random() * 2.1;
+                        pl = 1.0 + Math.random() * 0.9;
+                        pw = 0.1 + Math.random() * 0.5;
+                    } else if (sp === 'versicolor') {
+                        sl = 4.9 + Math.random() * 2.1;
+                        sw = 2.0 + Math.random() * 1.4;
+                        pl = 3.0 + Math.random() * 2.1;
+                        pw = 1.0 + Math.random() * 0.8;
+                    } else {
+                        sl = 4.9 + Math.random() * 3.0;
+                        sw = 2.2 + Math.random() * 1.6;
+                        pl = 4.5 + Math.random() * 2.4;
+                        pw = 1.4 + Math.random() * 1.1;
+                    }
+                    sampleRows.push({
+                        '종류 (Species)': sp,
+                        '꽃받침 길이 (Sepal Length)': parseFloat(sl.toFixed(1)),
+                        '꽃받침 너비 (Sepal Width)': parseFloat(sw.toFixed(1)),
+                        '꽃잎 길이 (Petal Length)': parseFloat(pl.toFixed(1)),
+                        '꽃잎 너비 (Petal Width)': parseFloat(pw.toFixed(1))
+                    });
+                }
+            } else if (datasetKey === 'penguins') {
+                name = 'palmer_penguins.csv';
+                const species = ['아델리 (Adelie)', '턱끈 (Chinstrap)', '젠투 (Gentoo)'];
+                const islands = ['토르거센', '비스코', '드림'];
+                for (let i = 0; i < 120; i++) {
+                    const sp = species[i % 3];
+                    const island = islands[i % 3];
+                    const bodyMass = sp.includes('Gentoo') ? 4500 + Math.random() * 1200 : 3200 + Math.random() * 1000;
+                    const flipperLen = sp.includes('Gentoo') ? 205 + Math.random() * 25 : 180 + Math.random() * 25;
+                    const billLen = 35 + Math.random() * 20;
+
+                    sampleRows.push({
+                        '펭귄 종': sp,
+                        '서식 섬': island,
+                        '부리 길이 (mm)': parseFloat(billLen.toFixed(1)),
+                        '날개 길이 (mm)': Math.round(flipperLen),
+                        '체중 (g)': Math.round(bodyMass)
+                    });
+                }
+            } else if (datasetKey === 'tips') {
+                name = 'restaurant_tips.csv';
+                const days = ['목요일', '금요일', '토요일', '일요일'];
+                const times = ['점심', '저녁'];
+                for (let i = 0; i < 140; i++) {
+                    const day = days[Math.floor(Math.random() * days.length)];
+                    const time = (day === '목요일' || day === '금요일') ? times[Math.floor(Math.random() * 2)] : '저녁';
+                    const totalBill = 10 + Math.random() * 40;
+                    const tip = totalBill * (0.1 + Math.random() * 0.15);
+                    const size = Math.floor(1 + Math.random() * 5);
+
+                    sampleRows.push({
+                        '요일': day,
+                        '시간대': time,
+                        '총 결제 금액 ($)': parseFloat(totalBill.toFixed(2)),
+                        '팁 ($)': parseFloat(tip.toFixed(2)),
+                        '인원 수': size
+                    });
+                }
+            }
+
+            processDataset(sampleRows, name);
+        }
+
+        function resetData() {
+            state.rawRows = [];
+            state.columns = [];
+            state.numericColumns = [];
+            state.categoricalColumns = [];
+            state.selectedClass = '';
+            state.selectedFeatures = [];
+            state.statsSummary = [];
+
+            document.getElementById('file-input').value = '';
+            document.getElementById('file-info-bar').classList.add('hidden');
+            document.getElementById('config-section').classList.add('hidden');
+            document.getElementById('plot-section').classList.add('hidden');
+            document.getElementById('stats-section').classList.add('hidden');
+            document.getElementById('table-section').classList.add('hidden');
+
+            showToast('데이터가 초기화되었습니다.', 'info');
+        }
+
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            const bgColors = {
+                success: 'bg-emerald-900/90 border-emerald-500 text-emerald-200',
+                error: 'bg-rose-900/90 border-rose-500 text-rose-200',
+                info: 'bg-slate-800/90 border-slate-600 text-slate-200'
+            };
+            const iconNames = {
+                success: 'check-circle',
+                error: 'alert-circle',
+                info: 'info'
+            };
+
+            toast.className = `flex items-center space-x-2 px-4 py-3 rounded-lg border shadow-lg backdrop-blur-md text-xs transition-all duration-300 transform translate-y-2 opacity-0 ${bgColors[type] || bgColors.info}`;
+            toast.innerHTML = `
+                <i data-lucide="${iconNames[type] || 'info'}" class="w-4 h-4 shrink-0"></i>
+                <span>${escapeHtml(message)}</span>
+            `;
+
+            container.appendChild(toast);
+            if (window.lucide) lucide.createIcons();
+
+            setTimeout(() => {
+                toast.classList.remove('translate-y-2', 'opacity-0');
+            }, 10);
+
+            setTimeout(() => {
+                toast.classList.add('opacity-0', 'translate-y-2');
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
+        function escapeHtml(str) {
+            if (!str) return '';
+            return String(str)
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+    </script>
+</body>
+</html>

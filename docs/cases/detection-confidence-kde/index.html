@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>실촬영 vs 3DGS 렌더 — 검출 신뢰도 분포 비교</title>
+    <title>실촬영 vs 3DGS 렌더 — 검출 갭 분석</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
@@ -53,7 +53,8 @@
     <header class="border-b" style="border-color: var(--border-1);">
         <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
             <p class="text-xs font-semibold tracking-wide uppercase muted mb-2">개인 프로젝트 · 시각화 실습</p>
-            <h1 class="text-2xl font-bold mb-3">실촬영 vs 3DGS 렌더 — 검출 신뢰도 분포 비교</h1>
+            <h1 class="text-2xl font-bold mb-3">신뢰도는 차이 없고, 검출 수만 체계적으로 적다</h1>
+            <p class="text-sm muted mb-3">3DGS 렌더 vs 실촬영 24쌍 — 쌍으로 봐야 보이는 것</p>
             <p class="text-sm leading-relaxed muted max-w-3xl">
                 개인 프로젝트 <a href="https://github.com/leeyunhome/field2scene" target="_blank" rel="noopener"
                 class="underline decoration-dotted hover:opacity-80">field2scene</a>에서, 상업용 공개 영상
@@ -72,10 +73,11 @@
                 <code class="text-[11px]">report/gap_tomato/summary.json</code> 참고.
             </p>
             <p class="text-xs faint mt-3">
-                차트 기법(히스토그램 · KDE)은 인프런
+                차트 기법은 인프런
                 <a href="https://www.inflearn.com/course/32-data-visualizatio/dashboard?cid=343563" target="_blank" rel="noopener"
                 class="underline decoration-dotted hover:opacity-80">32가지 데이터 시각화 전략 - 비전공자를 위한 기초이론 & 실습</a>
-                (반병현) 13강 "AI를 활용한 히스토그램, KDE 플롯"에서 배운 것을 이 실험 데이터에 적용했습니다.
+                (반병현)에서 배운 것을 이 실험 데이터에 적용했습니다 — 13강(히스토그램·KDE), 15강(strip/box/violin과 표본 크기).
+                강의를 들으며 계속 갱신 중입니다.
             </p>
         </div>
     </header>
@@ -193,6 +195,9 @@
                 <button id="tab-btn-stats" class="px-4 py-2 text-xs font-semibold rounded-lg transition flex items-center gap-1.5">
                     <i data-lucide="calculator" class="w-4 h-4"></i><span>요약 통계량</span>
                 </button>
+                <button id="tab-btn-paired" class="px-4 py-2 text-xs font-semibold rounded-lg transition flex items-center gap-1.5">
+                    <i data-lucide="git-compare" class="w-4 h-4"></i><span>쌍 비교</span>
+                </button>
                 <button id="tab-btn-data" class="px-4 py-2 text-xs font-semibold rounded-lg transition flex items-center gap-1.5">
                     <i data-lucide="table" class="w-4 h-4"></i><span>데이터 미리보기</span>
                 </button>
@@ -203,8 +208,59 @@
                     <h2 id="chart-title" class="text-base font-bold">분포 차트</h2>
                     <p id="chart-subtitle" class="text-xs faint">데이터를 불러오는 중…</p>
                 </div>
+
+                <div id="smalln-warning" class="hidden text-xs rounded-lg p-3 leading-relaxed"
+                     style="background: color-mix(in srgb, var(--series-4) 12%, transparent); border: 1px solid var(--series-4);">
+                    <strong>표본이 작습니다.</strong> <span id="smalln-detail"></span>
+                    KDE 곡선은 표본이 뒷받침하지 못하는 매끄러운 모양까지 그립니다 —
+                    <strong>아래 원본 점(rug)을 함께 보고 판단하세요.</strong>
+                    쌍을 이루는 데이터라면 <strong>쌍 비교</strong> 탭이 더 정확합니다.
+                </div>
+
                 <div class="relative w-full h-[420px] rounded-lg p-2" style="background: var(--surface-1); border: 1px solid var(--border-1);">
                     <canvas id="main-chart"></canvas>
+                </div>
+            </div>
+
+            <div id="tab-content-paired" class="hidden space-y-6">
+                <div class="card rounded-xl shadow-sm p-5 space-y-4">
+                    <div class="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                            <h2 class="text-base font-bold">쌍(paired) 비교 — 같은 view, 두 가지 방식</h2>
+                            <p class="text-xs faint mt-1 max-w-2xl">
+                                두 분포를 겹쳐 그리면 <strong>어느 view가 어느 view와 짝인지</strong>가 사라집니다.
+                                24쌍은 같은 카메라 pose를 실촬영/렌더로 각각 찍은 것이므로, 짝을 살려서 보는 쪽이 정확합니다.
+                            </p>
+                        </div>
+                        <div class="flex items-center gap-1 shrink-0">
+                            <button data-metric="dets" class="metric-btn px-3 py-1.5 text-xs font-semibold rounded-lg border" style="border-color: var(--border-1);">검출 수</button>
+                            <button data-metric="conf" class="metric-btn px-3 py-1.5 text-xs font-semibold rounded-lg border" style="border-color: var(--border-1);">평균 신뢰도</button>
+                        </div>
+                    </div>
+                    <div id="paired-verdict" class="text-sm rounded-lg p-4 leading-relaxed"></div>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <div class="card rounded-xl shadow-sm p-5 space-y-2">
+                        <h3 class="text-sm font-bold">① 쌍별 연결선 (slope)</h3>
+                        <p class="text-xs faint">선 하나가 view 하나. 기울기가 곧 그 view의 변화량입니다.</p>
+                        <div class="relative w-full h-[380px]"><canvas id="slope-chart"></canvas></div>
+                    </div>
+                    <div class="card rounded-xl shadow-sm p-5 space-y-2">
+                        <h3 class="text-sm font-bold">② 쌍별 차이 (렌더 − 실촬영)</h3>
+                        <p class="text-xs faint">0선 기준으로 어느 쪽이 몇 개인지 셀 수 있습니다.</p>
+                        <div class="relative w-full h-[380px]"><canvas id="diff-chart"></canvas></div>
+                    </div>
+                </div>
+
+                <div class="card rounded-xl shadow-sm p-5">
+                    <h3 class="text-sm font-bold mb-3">Wilcoxon 부호순위 검정</h3>
+                    <div id="paired-stats" class="grid grid-cols-2 sm:grid-cols-4 gap-3"></div>
+                    <p class="text-[11px] faint mt-3 leading-relaxed">
+                        표본이 24쌍으로 작고 정규성을 가정할 수 없어 비모수 검정을 씁니다. 0인 쌍은 제외(zero_method=wilcox),
+                        동점이 없으면 정확검정, 있으면 동점 보정 정규근사를 사용합니다 —
+                        <code>scipy.stats.wilcoxon</code>과 동일한 값을 내도록 구현·대조했습니다.
+                    </p>
                 </div>
             </div>
 
@@ -264,15 +320,84 @@
             };
         }
 
-        // ---- field2scene real measurement: report/gap_tomato/per_frame.csv, reshaped long ----
-        // 24 view-pairs, 재현 가능한 원본: https://github.com/leeyunhome/field2scene/blob/main/report/gap_tomato/per_frame.csv
-        const REAL_CONF = [0.2177,0.2341,0.2345,0.2083,0.2007,0.1997,0.1850,0.1774,0.1858,0.1915,0.2530,0.1877,0.1753,0.1697,0.1839,0.2332,0.1474,0.1521,0.1606,0.1830,0.1554,0.1583,0.1337,0.1543];
-        const RENDER_CONF = [0.2244,0.2339,0.2425,0.2072,0.1973,0.1966,0.1883,0.1884,0.1860,0.1964,0.2397,0.1781,0.1802,0.1375,0.1750,0.2226,0.1404,0.1262,0.1277,0.1537,0.1658,0.1755,0.1339,0.1443];
+        // ---- field2scene 실측: report/gap_tomato/per_frame.csv (24 view-pairs) ----
+        // 원본: https://github.com/leeyunhome/field2scene/blob/main/report/gap_tomato/per_frame.csv
+        // v=view, rd/gd=real/render 검출 수, rc/gc=real/render 평균 신뢰도
+        const PAIRS = [
+            {v:"00000", rd:12, gd:12, rc:0.217737, gc:0.224404}, {v:"00001", rd:11, gd:11, rc:0.234082, gc:0.233943},
+            {v:"00002", rd:12, gd:11, rc:0.234516, gc:0.242502}, {v:"00003", rd:14, gd:13, rc:0.208287, gc:0.207233},
+            {v:"00004", rd:15, gd:14, rc:0.200747, gc:0.197260}, {v:"00005", rd:11, gd:11, rc:0.199731, gc:0.196610},
+            {v:"00006", rd:12, gd:12, rc:0.185045, gc:0.188276}, {v:"00007", rd:10, gd:9, rc:0.177436, gc:0.188417},
+            {v:"00008", rd:9, gd:9, rc:0.185782, gc:0.185991}, {v:"00009", rd:11, gd:11, rc:0.191509, gc:0.196371},
+            {v:"00010", rd:8, gd:8, rc:0.252974, gc:0.239677}, {v:"00011", rd:7, gd:7, rc:0.187717, gc:0.178073},
+            {v:"00012", rd:9, gd:8, rc:0.175331, gc:0.180242}, {v:"00013", rd:7, gd:8, rc:0.169697, gc:0.137455},
+            {v:"00014", rd:6, gd:6, rc:0.183910, gc:0.174968}, {v:"00015", rd:5, gd:5, rc:0.233203, gc:0.222571},
+            {v:"00016", rd:6, gd:4, rc:0.147375, gc:0.140381}, {v:"00017", rd:5, gd:3, rc:0.152094, gc:0.126212},
+            {v:"00018", rd:4, gd:3, rc:0.160614, gc:0.127734}, {v:"00019", rd:3, gd:3, rc:0.182986, gc:0.153666},
+            {v:"00020", rd:3, gd:2, rc:0.155378, gc:0.165765}, {v:"00021", rd:2, gd:1, rc:0.158273, gc:0.175454},
+            {v:"00022", rd:2, gd:1, rc:0.133738, gc:0.133902}, {v:"00023", rd:3, gd:3, rc:0.154301, gc:0.144251},
+        ];
+        const METRICS = {
+            dets: { label: "검출 수", unit: "개", real: p => p.rd, render: p => p.gd, fmt: v => v.toFixed(0) },
+            conf: { label: "평균 신뢰도", unit: "", real: p => p.rc, render: p => p.gc, fmt: v => v.toFixed(3) },
+        };
+
         function fieldToSceneSample() {
             const rows = [];
-            REAL_CONF.forEach((v, i) => rows.push({ view: `${String(i).padStart(5, '0')}.png`, source: '실촬영', conf: v }));
-            RENDER_CONF.forEach((v, i) => rows.push({ view: `${String(i).padStart(5, '0')}.png`, source: '3DGS 렌더', conf: v }));
+            PAIRS.forEach(p => rows.push({ view: `${p.v}.png`, source: '실촬영',   conf: p.rc, dets: p.rd }));
+            PAIRS.forEach(p => rows.push({ view: `${p.v}.png`, source: '3DGS 렌더', conf: p.gc, dets: p.gd }));
             return rows;
+        }
+
+        // ---- Wilcoxon 부호순위 검정 (scipy.stats.wilcoxon와 대조 검증됨) ----
+        function rankdataAvg(a) {
+            const idx = a.map((v, i) => [v, i]).sort((x, y) => x[0] - y[0]);
+            const r = new Array(a.length);
+            let i = 0;
+            while (i < idx.length) {
+                let j = i;
+                while (j + 1 < idx.length && idx[j + 1][0] === idx[i][0]) j++;
+                const avg = (i + j) / 2 + 1;
+                for (let k = i; k <= j; k++) r[idx[k][1]] = avg;
+                i = j + 1;
+            }
+            return r;
+        }
+        function normSf(z) {
+            const t = 1 / (1 + 0.3275911 * Math.abs(z) / Math.SQRT2);
+            const y = 1 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t + 0.254829592)
+                * t * Math.exp(-z * z / 2);
+            const cdf = z >= 0 ? 0.5 * (1 + y) : 0.5 * (1 - y);
+            return 1 - cdf;
+        }
+        function wilcoxonSignedRank(diffs) {
+            const nz = diffs.filter(d => d !== 0);
+            const n = nz.length;
+            if (n === 0) return { n, W: 0, p: 1, method: '해당 없음' };
+            const absd = nz.map(Math.abs);
+            const ranks = rankdataAvg(absd);
+            let rPlus = 0, rMinus = 0;
+            nz.forEach((d, i) => { if (d > 0) rPlus += ranks[i]; else rMinus += ranks[i]; });
+            const W = Math.min(rPlus, rMinus);
+            const counts = {};
+            absd.forEach(v => { counts[v] = (counts[v] || 0) + 1; });
+            const tieGroups = Object.values(counts).filter(c => c > 1);
+
+            if (tieGroups.length === 0 && n <= 50) {
+                const maxW = n * (n + 1) / 2;
+                const ways = new Float64Array(maxW + 1);
+                ways[0] = 1;
+                for (let r = 1; r <= n; r++) for (let w = maxW; w >= r; w--) ways[w] += ways[w - r];
+                let cum = 0;
+                for (let w = 0; w <= Math.floor(W); w++) cum += ways[w];
+                return { n, W, p: Math.min(1, 2 * cum / Math.pow(2, n)), method: '정확검정' };
+            }
+            const mn = n * (n + 1) / 4;
+            let se = n * (n + 1) * (2 * n + 1);
+            tieGroups.forEach(t => { se -= 0.5 * (t * (t * t - 1)); });
+            se = Math.sqrt(se / 24);
+            const z = (W - mn) / se;
+            return { n, W, p: Math.min(1, 2 * normSf(Math.abs(z))), method: '정규근사(동점 보정)' };
         }
 
         let rawWorkbook = null;
@@ -302,6 +427,7 @@
 
         const tabs = {
             chart: [document.getElementById('tab-btn-chart'), document.getElementById('tab-content-chart')],
+            paired: [document.getElementById('tab-btn-paired'), document.getElementById('tab-content-paired')],
             stats: [document.getElementById('tab-btn-stats'), document.getElementById('tab-content-stats')],
             data: [document.getElementById('tab-btn-data'), document.getElementById('tab-content-data')],
         };
@@ -322,10 +448,13 @@
             if (window.lucide) lucide.createIcons();
             setupEventListeners();
             loadFieldToSceneSample();
+            paintMetricBtns();
+            renderPaired();
         });
 
         window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
             if (parsedData.length) updateVisualization();
+            renderPaired();
         });
 
         function setupEventListeners() {
@@ -529,6 +658,31 @@
                 }
             });
 
+            // 원본 점을 축 위 눈금으로 그린다(rug) — KDE 곡선이 몇 개의 점에서 나온 것인지 보이게
+            const rugPlugin = {
+                id: 'rug',
+                afterDatasetsDraw: (chart) => {
+                    const { ctx, scales: { x: xa, y: ya } } = chart;
+                    ctx.save();
+                    groups.forEach((g, gi) => {
+                        const vals = groupCol ? rows.filter(r => r.g === g).map(r => r.v) : allVals;
+                        ctx.strokeStyle = colors.series[gi % colors.series.length];
+                        ctx.lineWidth = 1;
+                        ctx.globalAlpha = 0.75;
+                        const base = ya.bottom - gi * 7;
+                        vals.forEach(v => {
+                            const px = xa.getPixelForValue(v);
+                            if (px < xa.left || px > xa.right) return;
+                            ctx.beginPath();
+                            ctx.moveTo(px, base);
+                            ctx.lineTo(px, base - 6);
+                            ctx.stroke();
+                        });
+                    });
+                    ctx.restore();
+                }
+            };
+
             const showMean = chkShowMean.checked && !groupCol;
             const singleStats = !groupCol ? calculateStats(allVals) : null;
             const linesPlugin = {
@@ -553,7 +707,7 @@
             const ctx = document.getElementById('main-chart').getContext('2d');
             chartInstance = new Chart(ctx, {
                 data: { datasets },
-                plugins: [linesPlugin],
+                plugins: [rugPlugin, linesPlugin],
                 options: {
                     responsive: true, maintainAspectRatio: false,
                     interaction: { mode: 'index', intersect: false },
@@ -578,6 +732,19 @@
 
             document.getElementById('chart-title').textContent = groupCol ? `${targetCol} — 그룹별(${groupCol}) KDE & 히스토그램` : `${targetCol} 의 KDE & 히스토그램`;
             document.getElementById('chart-subtitle').textContent = `총 ${rows.length}개${groupCol ? ` (${groups.length}개 그룹)` : ''} | Bins: ${numBins}개`;
+
+            // 표본이 작으면 KDE를 그대로 믿으면 안 된다 — 경고 + 원본 점(rug) 노출
+            const smallGroups = groups
+                .map(g => ({ g, n: (groupCol ? rows.filter(r => r.g === g) : rows).length }))
+                .filter(x => x.n < 30);
+            const warn = document.getElementById('smalln-warning');
+            if (smallGroups.length && chkShowKde.checked) {
+                document.getElementById('smalln-detail').textContent =
+                    smallGroups.map(x => `${groupCol ? x.g : targetCol} n=${x.n}`).join(', ') + '.';
+                warn.classList.remove('hidden');
+            } else {
+                warn.classList.add('hidden');
+            }
 
             renderStats(rows, groupCol, groups);
         }
@@ -618,6 +785,121 @@
                         metrics.map(m => `<td class="px-3 py-2">${m === 'n' ? s[m] : s[m].toFixed(3)}</td>`).join('') + '</tr>';
                 }).join('');
             }
+        }
+
+        // ---- 쌍 비교 탭 ----
+        let slopeChart = null, diffChart = null, currentMetric = 'dets';
+
+        function renderPaired() {
+            const M = METRICS[currentMetric];
+            const c = themeColors();
+            const UP = c.series[0], DOWN = c.series[1], SAME = c.text;
+
+            const rows = PAIRS.map(p => {
+                const a = M.real(p), b = M.render(p);
+                return { v: p.v, a, b, d: b - a };
+            });
+            const nDown = rows.filter(r => r.d < 0).length;
+            const nSame = rows.filter(r => r.d === 0).length;
+            const nUp = rows.filter(r => r.d > 0).length;
+            const meanDiff = rows.reduce((s, r) => s + r.d, 0) / rows.length;
+            const wx = wilcoxonSignedRank(rows.map(r => r.d));
+            const colorOf = r => (r.d < 0 ? DOWN : r.d > 0 ? UP : SAME);
+
+            // 판정 문구
+            const sig = wx.p < 0.05;
+            const verdict = document.getElementById('paired-verdict');
+            verdict.style.background = `color-mix(in srgb, ${sig ? DOWN : SAME} 12%, transparent)`;
+            verdict.style.border = `1px solid ${sig ? DOWN : 'var(--border-1)'}`;
+            verdict.innerHTML = sig
+                ? `<strong>렌더가 체계적으로 낮습니다.</strong> 24쌍 중 <strong>${nDown}쌍에서 렌더가 적고</strong>,
+                   같은 쌍이 ${nSame}개, 렌더가 많은 쌍은 <strong>${nUp}개뿐</strong>입니다.
+                   방향이 한쪽으로 쏠려 있어 Wilcoxon 검정에서 유의합니다 (p=${wx.p.toFixed(4)}).
+                   평균만 비교하면 "조금 적다"로 끝나지만, 쌍으로 보면 <strong>우연이 아닌 일관된 손실</strong>임이 드러납니다.`
+                : `<strong>차이가 유의하지 않습니다.</strong> 렌더가 높은 쌍 ${nUp}개, 낮은 쌍 ${nDown}개로
+                   방향이 갈립니다 (p=${wx.p.toFixed(4)}). 평균은 ${M.fmt(meanDiff)}만큼 다르지만
+                   <strong>이 차이를 실재하는 것으로 주장할 근거는 없습니다.</strong>
+                   3DGS 렌더가 실촬영과 <strong>검출기 신뢰도 면에서 구별되지 않는다</strong>는 뜻입니다.`;
+
+            // ① slope
+            const slopeSets = rows.map(r => ({
+                label: r.v, data: [r.a, r.b], borderColor: colorOf(r), backgroundColor: colorOf(r),
+                borderWidth: 1.5, pointRadius: 3, tension: 0,
+            }));
+            if (slopeChart) slopeChart.destroy();
+            slopeChart = new Chart(document.getElementById('slope-chart').getContext('2d'), {
+                type: 'line',
+                data: { labels: ['실촬영', '3DGS 렌더'], datasets: slopeSets },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: { callbacks: { title: it => `view ${it[0].dataset.label}`,
+                            label: ctx => `${ctx.label}: ${M.fmt(ctx.parsed.y)}${M.unit}` } },
+                    },
+                    scales: {
+                        x: { grid: { display: false }, ticks: { color: c.text, font: { weight: 'bold' } } },
+                        y: { title: { display: true, text: M.label + (M.unit ? ` (${M.unit})` : ''), color: c.text },
+                             grid: { color: c.grid }, ticks: { color: c.text } },
+                    },
+                },
+            });
+
+            // ② 차이 (정렬)
+            const sorted = [...rows].sort((x, y) => x.d - y.d);
+            if (diffChart) diffChart.destroy();
+            diffChart = new Chart(document.getElementById('diff-chart').getContext('2d'), {
+                type: 'bar',
+                data: {
+                    labels: sorted.map(r => r.v),
+                    datasets: [{ data: sorted.map(r => r.d), backgroundColor: sorted.map(colorOf), borderRadius: 2 }],
+                },
+                options: {
+                    indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: { callbacks: { title: it => `view ${it[0].label}`,
+                            label: ctx => `차이 ${ctx.parsed.x > 0 ? '+' : ''}${M.fmt(ctx.parsed.x)}${M.unit}` } },
+                    },
+                    scales: {
+                        x: { title: { display: true, text: `렌더 − 실촬영 (${M.unit || '차이'})`, color: c.text },
+                             grid: { color: c.grid }, ticks: { color: c.text } },
+                        y: { grid: { display: false }, ticks: { color: c.text, font: { size: 9 } } },
+                    },
+                },
+            });
+
+            // ③ 통계 카드
+            const cards = [
+                ['쌍 개수', `${rows.length}`, null],
+                ['렌더가 낮음', `${nDown}쌍`, DOWN],
+                ['같음 / 높음', `${nSame} / ${nUp}쌍`, nUp > nDown ? UP : null],
+                ['Wilcoxon p', wx.p < 0.0001 ? '<0.0001' : wx.p.toFixed(4), sig ? DOWN : null],
+            ];
+            document.getElementById('paired-stats').innerHTML = cards.map(([l, v, col]) => `
+                <div class="p-3 rounded-lg text-center card">
+                    <span class="text-[11px] faint block">${l}</span>
+                    <span class="text-base font-bold" style="${col ? `color:${col}` : ''}">${v}</span>
+                </div>`).join('') +
+                `<div class="col-span-2 sm:col-span-4 text-[11px] faint pt-1">
+                    검정 방식: ${wx.method} · 0인 쌍 제외 후 n=${wx.n} · W=${wx.W}
+                 </div>`;
+        }
+
+        document.querySelectorAll('.metric-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                currentMetric = btn.dataset.metric;
+                paintMetricBtns();
+                renderPaired();
+            });
+        });
+        function paintMetricBtns() {
+            document.querySelectorAll('.metric-btn').forEach(b => {
+                const on = b.dataset.metric === currentMetric;
+                b.style.background = on ? 'var(--series-1)' : 'transparent';
+                b.style.color = on ? '#fff' : 'var(--text-secondary)';
+                b.style.borderColor = on ? 'var(--series-1)' : 'var(--border-1)';
+            });
         }
 
         function renderDataTable() {

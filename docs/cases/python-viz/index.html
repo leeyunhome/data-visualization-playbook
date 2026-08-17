@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Python을 사용한 시각화</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/styles/github.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --surface-1: #fcfcfb; --surface-2: #ffffff; --surface-3: #f6f6f4; --border-1: #e2e8f0;
+            --text-primary: #0b0b0b; --text-secondary: #52514e; --text-muted: #85837c;
+            --series-1: #2a78d6; --series-2: #eb6834; --series-3: #1baf7a; --series-4: #eda100;
+        }
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --surface-1: #141413; --surface-2: #1a1a19; --surface-3: #201f1d; --border-1: #33322e;
+                --text-primary: #ffffff; --text-secondary: #c3c2b7; --text-muted: #8f8d84;
+                --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70; --series-4: #c98500;
+            }
+        }
+        body { font-family: 'Inter', system-ui, -apple-system, sans-serif; background: var(--surface-1); color: var(--text-primary); }
+        .card { background: var(--surface-2); border: 1px solid var(--border-1); }
+        .muted { color: var(--text-secondary); }
+        .faint { color: var(--text-muted); }
+        pre, code, .mono { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+        pre { background: var(--surface-3) !important; border: 1px solid var(--border-1); border-radius: 10px; }
+        pre code.hljs { background: transparent !important; padding: 1rem !important; font-size: 12px; line-height: 1.65; }
+        /* highlight.js github 테마는 라이트 전용 — 다크에서 토큰 색만 재정의 */
+        @media (prefers-color-scheme: dark) {
+            .hljs { color: #c3c2b7; }
+            .hljs-comment, .hljs-quote { color: #7d7b72; font-style: italic; }
+            .hljs-keyword, .hljs-selector-tag, .hljs-literal { color: #d58cf0; }
+            .hljs-string, .hljs-doctag { color: #8fd39a; }
+            .hljs-title, .hljs-section, .hljs-title.function_ { color: #7cb6f2; }
+            .hljs-number, .hljs-built_in { color: #f0a868; }
+            .hljs-params { color: #c3c2b7; }
+        }
+        img.chart { width: 100%; height: auto; border-radius: 10px; border: 1px solid var(--border-1); background: #fff; }
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-thumb { background: var(--border-1); border-radius: 4px; }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+    <header class="border-b" style="border-color: var(--border-1);">
+        <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            <p class="text-xs font-semibold tracking-wide uppercase muted mb-2">개인 프로젝트 · 시각화 실습</p>
+            <h1 class="text-2xl font-bold mb-2">Python을 사용한 시각화</h1>
+            <p class="text-base muted mb-4">CSV 하나를 던지면 박스플롯·히스토그램·ECDF를 뽑아주는 CLI —
+                그리고 그 세 장이 <strong>놓친 것</strong></p>
+            <p class="text-sm leading-relaxed muted max-w-3xl">
+                매번 주피터를 열어 컬럼명을 고쳐가며 그리는 대신, <strong>폴더에 CSV를 두고 실행하면
+                컬럼을 골라 그려주는 CLI</strong>를 만들었습니다. 아래 차트 세 장은 이 스크립트를
+                <strong>실제로 돌려서 나온 출력물</strong>이고, 입력은 개인 프로젝트
+                <a href="https://github.com/leeyunhome/field2scene" target="_blank" rel="noopener"
+                   class="underline decoration-dotted hover:opacity-80">field2scene</a>의 실측 데이터
+                (토마토 온실 3DGS 렌더 vs 실촬영 24쌍)입니다.
+            </p>
+            <p class="text-xs faint mt-3">
+                인프런 <a href="https://www.inflearn.com/course/32-data-visualizatio/dashboard?cid=343563"
+                target="_blank" rel="noopener" class="underline decoration-dotted hover:opacity-80">32가지 데이터 시각화 전략</a>
+                (반병현) 16강 "Python과 ChatGPT를 활용한 박스플롯, 히스토그램, ECDF"를 따라가며 만들었습니다.
+                코드 초안은 AI(Gemini)로 생성한 뒤 직접 실행·검증하고 다듬었습니다.
+            </p>
+        </div>
+    </header>
+
+    <main class="flex-1 max-w-4xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-10">
+
+        <section class="space-y-4">
+            <h2 class="text-lg font-bold flex items-center gap-2">
+                <i data-lucide="terminal" class="w-5 h-5" style="color: var(--series-1);"></i>
+                실행 한 번, 차트 세 장
+            </h2>
+            <div class="card rounded-xl p-4">
+                <pre><code class="language-bash">$ python main.py
+
+CSV 파일 자동 선택: field2scene_detection.csv
+데이터 로드 완료! (총 48행, 4열)
+
+[클래스(그룹/범주형)로 사용할 컬럼을 선택하세요]
+  1. view   2. 촬영방식   3. 검출수   4. 평균신뢰도
+번호를 입력하세요 (1~4): 2
+
+[피처(수치형 데이터)로 사용할 컬럼을 선택하세요]
+번호를 입력하세요 (1~4): 3
+
+[생성할 그래프 종류를 선택하세요]
+  1. 박스플롯   2. 히스토그램   3. ECDF   4. 전체 한 번에 생성
+번호를 입력하세요 (1~4): 4
+
+[그래프 생성 및 저장 시작]
+ -> [박스플롯 저장 완료]     boxplot_촬영방식_검출수.jpg
+ -> [히스토그램 저장 완료]   histogram_촬영방식_검출수.jpg
+ -> [ECDF 플롯 저장 완료]    ecdf_촬영방식_검출수.jpg</code></pre>
+            </div>
+
+            <div class="grid grid-cols-1 gap-5">
+                <figure class="card rounded-xl p-4 space-y-2">
+                    <img class="chart" src="img/boxplot.jpg" alt="촬영방식별 검출수 박스플롯 — 실촬영과 3DGS 렌더의 상자가 거의 겹친다">
+                    <figcaption class="text-xs faint">① 박스플롯 — 중앙값 7.5 vs 8.0, 상자가 거의 겹친다</figcaption>
+                </figure>
+                <figure class="card rounded-xl p-4 space-y-2">
+                    <img class="chart" src="img/histogram.jpg" alt="촬영방식별 검출수 히스토그램과 KDE 곡선">
+                    <figcaption class="text-xs faint">② 히스토그램 + KDE — 두 분포가 포개진다</figcaption>
+                </figure>
+                <figure class="card rounded-xl p-4 space-y-2">
+                    <img class="chart" src="img/ecdf.jpg" alt="촬영방식별 검출수 ECDF — 두 계단 곡선이 거의 붙어 있다">
+                    <figcaption class="text-xs faint">③ ECDF — 렌더가 아주 조금 왼쪽이지만 사실상 붙어 있다</figcaption>
+                </figure>
+            </div>
+        </section>
+
+        <section class="space-y-4">
+            <h2 class="text-lg font-bold flex items-center gap-2">
+                <i data-lucide="alert-triangle" class="w-5 h-5" style="color: var(--series-2);"></i>
+                세 장 모두 "차이 없다"고 말한다 — 그런데 틀렸다
+            </h2>
+            <div class="card rounded-xl p-5 space-y-3 text-sm leading-relaxed">
+                <p>
+                    박스플롯도, 히스토그램도, ECDF도 두 그룹이 거의 같다고 보여줍니다. 여기서 멈추면
+                    <strong>"3DGS 렌더는 실촬영과 검출 수가 비슷하다"</strong>가 결론입니다.
+                </p>
+                <p>
+                    그런데 이 데이터는 <strong>같은 카메라 pose를 두 방식으로 찍은 24쌍</strong>입니다.
+                    위 세 그림은 전부 두 그룹을 <strong>독립 표본으로 취급</strong>해 주변분포만 비교하므로,
+                    <strong>어느 view가 어느 view와 짝인지를 통째로 버립니다.</strong>
+                </p>
+                <p>짝을 살려서 다시 세어보면 그림이 달라집니다.</p>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-xs mt-1">
+                        <thead>
+                            <tr class="text-left" style="color: var(--text-secondary);">
+                                <th class="py-2 pr-4">보는 방식</th><th class="py-2 pr-4">결과</th><th class="py-2">결론</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y" style="border-color: var(--border-1);">
+                            <tr><td class="py-2 pr-4">주변분포 (위 3장)</td><td class="py-2 pr-4 mono">중앙값 7.5 vs 8.0</td><td class="py-2">차이 없어 보임</td></tr>
+                            <tr><td class="py-2 pr-4"><strong>쌍별 비교</strong></td>
+                                <td class="py-2 pr-4 mono">렌더가 적음 <strong>11</strong> / 같음 12 / 많음 <strong>1</strong></td>
+                                <td class="py-2"><strong style="color: var(--series-2);">24쌍 중 23쌍에서 같거나 적음</strong></td></tr>
+                            <tr><td class="py-2 pr-4">Wilcoxon 부호순위</td><td class="py-2 pr-4 mono">p = 0.0049</td>
+                                <td class="py-2"><strong style="color: var(--series-2);">체계적 손실 (유의)</strong></td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <p class="pt-1">
+                    렌더가 <em>더 많이</em> 찾은 view는 24개 중 <strong>단 1개</strong>입니다. 방향이 한쪽으로 쏠려
+                    있으니 우연으로 보기 어렵습니다. <strong>평균이 비슷한 것과 차이가 없는 것은 다릅니다.</strong>
+                </p>
+                <p class="text-xs faint pt-1">
+                    → 쌍 비교 전체 분석은
+                    <a href="../detection-confidence-kde/" class="underline decoration-dotted" style="color: var(--series-1);">검출 갭 분석 케이스</a>에서
+                    인터랙티브하게 볼 수 있습니다.
+                </p>
+            </div>
+        </section>
+
+        <section class="space-y-4">
+            <h2 class="text-lg font-bold flex items-center gap-2">
+                <i data-lucide="code-2" class="w-5 h-5" style="color: var(--series-1);"></i>
+                코드에서 신경 쓴 것
+            </h2>
+
+            <div class="card rounded-xl p-5 space-y-2">
+                <h3 class="text-sm font-bold">1. 한글 CSV 인코딩 자동 감지</h3>
+                <p class="text-sm muted">한국에서 엑셀로 저장한 CSV는 UTF-8이 아니라 <span class="mono text-xs">CP949</span>입니다.
+                    매번 <span class="mono text-xs">UnicodeDecodeError</span>를 만나는 대신 후보를 순서대로 시도합니다.
+                    이 페이지의 입력 CSV도 일부러 CP949로 저장해 이 경로를 실제로 태웠습니다.</p>
+                <pre><code class="language-python">def load_csv_with_encoding(file_path):
+    for enc in ['utf-8', 'cp949', 'euc-kr', 'utf-8-sig']:
+        try:
+            return pd.read_csv(file_path, encoding=enc)
+        except (UnicodeDecodeError, LookupError):
+            continue
+    raise ValueError(f"지원하는 인코딩으로 {file_path} 파일을 열 수 없습니다.")</code></pre>
+            </div>
+
+            <div class="card rounded-xl p-5 space-y-2">
+                <h3 class="text-sm font-bold">2. seaborn이 없어도 죽지 않게</h3>
+                <p class="text-sm muted">seaborn은 있으면 쓰고, 없으면 matplotlib으로 같은 그림을 그립니다.
+                    남의 환경에서 <span class="mono text-xs">ModuleNotFoundError</span>로 멈추지 않는 게 도구의 기본이라고 봤습니다.</p>
+                <pre><code class="language-python">try:
+    import seaborn as sns
+    HAS_SEABORN = True
+except ImportError:
+    HAS_SEABORN = False
+
+# ... 그리는 쪽에서
+if HAS_SEABORN:
+    sns.boxplot(data=plot_data, x=class_col, y=feature_col, palette='Set2')
+else:
+    grouped = [g[feature_col].values for _, g in plot_data.groupby(class_col)]
+    box = plt.boxplot(grouped, labels=[...], patch_artist=True, showmeans=True)</code></pre>
+            </div>
+
+            <div class="card rounded-xl p-5 space-y-2">
+                <h3 class="text-sm font-bold">3. 한글 폰트와 음수 부호</h3>
+                <p class="text-sm muted">한글 폰트를 지정하면 마이너스 기호가 <span class="mono text-xs">□</span>로 깨집니다.
+                    두 줄이지만 빼먹으면 축 라벨이 못 쓰게 됩니다.</p>
+                <pre><code class="language-python">plt.rcParams['font.family'] = 'Malgun Gothic'
+plt.rcParams['axes.unicode_minus'] = False</code></pre>
+            </div>
+        </section>
+
+        <section class="space-y-4">
+            <h2 class="text-lg font-bold flex items-center gap-2">
+                <i data-lucide="list-checks" class="w-5 h-5" style="color: var(--series-4);"></i>
+                남은 한계
+            </h2>
+            <div class="card rounded-xl p-5">
+                <ul class="text-sm muted space-y-2 list-disc pl-5">
+                    <li><strong>표본 크기를 그림에 안 쓴다.</strong> KDE 곡선은 24개에서 나온 것이나 2,400개에서 나온 것이나
+                        똑같이 매끄럽게 보입니다. n을 캡션이나 범례에 넣어야 합니다.</li>
+                    <li><strong>쌍 구조를 모른다.</strong> 위에서 본 문제입니다. 짝을 이루는 데이터라면
+                        연결선(slope)이나 차이 플롯이 필요합니다.</li>
+                    <li><strong>박스플롯이 기본값이다.</strong> 박스는 치우침과 이봉분포를 감춥니다.
+                        분포 모양을 모를 때는 바이올린이나 원본 점을 먼저 보는 편이 안전합니다.</li>
+                    <li><strong>Windows 폰트에 고정.</strong> <span class="mono text-xs">Malgun Gothic</span>이 없는 환경에서는
+                        한글이 깨집니다. OS별 폰트 후보를 순회하도록 고쳐야 합니다.</li>
+                </ul>
+            </div>
+        </section>
+    </main>
+
+    <footer class="border-t mt-4" style="border-color: var(--border-1);">
+        <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-6 text-xs faint flex flex-wrap gap-x-6 gap-y-1">
+            <span>데이터·코드: <a href="https://github.com/leeyunhome/field2scene" target="_blank" rel="noopener" class="underline decoration-dotted">field2scene</a></span>
+            <span>강의 출처: <a href="https://www.inflearn.com/course/32-data-visualizatio/dashboard?cid=343563" target="_blank" rel="noopener" class="underline decoration-dotted">인프런 32가지 데이터 시각화 전략</a></span>
+            <a href="../../index.html" class="underline decoration-dotted">← 포트폴리오 목록</a>
+        </div>
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/core.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/languages/python.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/languages/bash.min.js"></script>
+    <script>
+        window.addEventListener('DOMContentLoaded', () => {
+            if (window.lucide) lucide.createIcons();
+            // 언어 모듈(python/bash)은 CDN 스크립트가 스스로 hljs에 등록한다.
+            // 하이라이팅이 실패해도 <pre> 안의 코드는 그대로 읽히므로 조용히 넘어간다.
+            if (window.hljs) {
+                document.querySelectorAll('pre code').forEach(el => {
+                    try { hljs.highlightElement(el); } catch (e) { /* 원문 유지 */ }
+                });
+            }
+        });
+    </script>
+</body>
+</html>
