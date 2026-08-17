@@ -30,3 +30,6 @@ references/인프런_*.md
 /boxplot_*.jpg
 /histogram_*.jpg
 /ecdf_*.jpg
+
+# 강의 제공 완성 코드가 섞여 있어 보류 — 본인이 작성한 버전으로 교체하면 이 줄을 지운다
+docs/cases/2d-density-hexbin/
