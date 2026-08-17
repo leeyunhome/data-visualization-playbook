@@ -40,7 +40,28 @@
         .panel .ptitle{font-size:.78rem;font-weight:600;margin:0 0 .3rem}
         .panel figcaption{font-size:.75rem;color:var(--text-secondary);margin-top:.35rem}
         .hnote{font-size:.72rem;color:var(--text-muted);margin:1rem 0 0;padding-top:.75rem;
-               border-top:1px solid var(--border-1)}
+               border-top:1px solid var(--border-1);line-height:1.7}
+
+        /* 히어로 설명 */
+        .setup{margin:0 0 1.2rem}
+        .setup p{margin:0 0 .5rem;font-size:.84rem;color:var(--text-secondary);line-height:1.75;max-width:74ch}
+        .whyh{font-size:.95rem;margin:1.5rem 0 .6rem;padding-top:1.1rem;border-top:1px solid var(--border-1)}
+        ol.why{margin:0;padding-left:1.35rem;font-size:.84rem;color:var(--text-secondary);line-height:1.75}
+        ol.why li{margin-bottom:.7rem;max-width:78ch}
+        ol.why strong{color:var(--text-primary)}
+        ol.why em{font-style:normal;text-decoration:underline;text-decoration-style:dotted;text-underline-offset:2px}
+        .mono{font-family:ui-monospace,'SFMono-Regular',Menlo,monospace;font-size:.79rem;
+              background:var(--surface-1);border:1px solid var(--border-1);border-radius:4px;padding:.05rem .3rem}
+        .cmpwrap{overflow-x:auto;margin:.55rem 0 .45rem}
+        table.cmp{border-collapse:collapse;font-size:.78rem}
+        table.cmp th,table.cmp td{text-align:right;padding:.24rem .7rem;border-bottom:1px solid var(--border-1);white-space:nowrap}
+        table.cmp th{color:var(--text-muted);font-weight:600}
+        table.cmp tr td:first-child,table.cmp tr th:first-child{text-align:left;color:var(--text-secondary)}
+        table.cmp td.dn{color:var(--s2);font-weight:600}
+        table.cmp td.up{color:var(--s1);font-weight:600}
+        .verdict{margin:1.1rem 0 0;padding:.8rem 1rem;font-size:.85rem;line-height:1.75;
+                 background:var(--surface-1);border:1px solid var(--border-1);
+                 border-left:3px solid var(--s2);border-radius:8px;max-width:78ch}
 
         /* 격자 갤러리 — auto-fill 이라 타일이 늘어도 레이아웃 그대로 */
         .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:1rem}
@@ -118,8 +139,20 @@
         </p>
 
         <section class="hero">
-            <h2>박스플롯은 렌더가 더 낫다고 말했다</h2>
-            <p class="hsub">쌍으로 보니 24쌍 중 23쌍에서 같거나 적었다</p>
+            <h2>박스플롯은 렌더가 더 많이 찾았다고 말했다</h2>
+            <p class="hsub">쌍으로 보면 24쌍 중 23쌍에서 같거나 적었다</p>
+
+            <div class="setup">
+                <p><strong>무엇을 재는가.</strong> 토마토 온실 영상을 3D Gaussian Splatting으로 재구성하면,
+                   실제로 찍지 않은 시점의 이미지를 만들어낼 수 있습니다. 이 합성 이미지가 실촬영을
+                   대신 쓸 만한지 확인하려고, <strong>같은 카메라 위치의 실촬영 사진과 3DGS 렌더 이미지를
+                   짝지어 24쌍</strong>을 만들고 양쪽에 같은 검출기(YOLO-World)를 돌려
+                   <strong>토마토가 몇 개 검출되는지</strong> 셌습니다.</p>
+                <p><strong>짝이 핵심입니다.</strong> 같은 위치를 찍었으니 한 쌍 안에서는 직접 비교가 됩니다.
+                   어떤 view는 원래 토마토가 15개 보이고 어떤 view는 2개뿐인데, 이 차이는
+                   렌더 품질과 아무 상관이 없습니다.</p>
+            </div>
+
             <div class="panels">
                 <figure class="panel">
                     <p class="ptitle">주변분포로 보면</p>
@@ -139,7 +172,7 @@
         <text class="tk" x="93.28" y="157" text-anchor="middle">실촬영</text>
         <text class="tk" x="192.72" y="157" text-anchor="middle">렌더</text>
       </svg>
-                    <figcaption>중앙값은 렌더가 <strong>0.5 더 높다</strong></figcaption>
+                    <figcaption>짝을 풀어 두 뭉치로 요약 — 중앙값 7.5 vs <strong>8.0</strong></figcaption>
                 </figure>
                 <figure class="panel">
                     <p class="ptitle">쌍으로 보면</p>
@@ -177,13 +210,56 @@
         <text class="tk" x="66.16" y="157" text-anchor="middle">실촬영</text>
         <text class="tk" x="219.84" y="157" text-anchor="middle">렌더</text>
       </svg>
-                    <figcaption>선 하나가 view 하나 · <strong>23쌍이 같거나 적다</strong></figcaption>
+                    <figcaption>선 하나가 view 하나 · 감소 11 · 동일 12 · <strong>증가 1</strong></figcaption>
                 </figure>
             </div>
+
+            <h3 class="whyh">왜 정반대로 나오는가</h3>
+            <ol class="why">
+                <li>
+                    <strong>박스플롯은 짝을 버립니다.</strong>
+                    24쌍을 풀어서 "실촬영 24개 뭉치"와 "렌더 24개 뭉치"로 따로 요약합니다.
+                    어느 사진이 어느 사진의 짝이었는지가 사라지므로, <em>쌍 안에서 늘었는지 줄었는지</em>는
+                    애초에 그림에 담기지 않습니다.
+                </li>
+                <li>
+                    <strong>중앙값은 정렬한 가운데 값만 봅니다.</strong>
+                    24개를 크기순으로 세우고 12·13번째만 취하는데 —
+                    <span class="mono">실촬영 7, 8 → 7.5</span> /
+                    <span class="mono">렌더 8, 8 → 8.0</span>.
+                    렌더에 8이 세 개라 가운데를 차지했을 뿐, 개별 쌍의 증감과는 아무 관계가 없습니다.
+                </li>
+                <li>
+                    <strong>같은 데이터인데 평균과 중앙값이 반대를 가리킵니다.</strong>
+                    <div class="cmpwrap">
+                        <table class="cmp">
+                            <tr><th></th><th>실촬영</th><th>3DGS 렌더</th><th>방향</th></tr>
+                            <tr><td>검출 수 합계</td><td>187개</td><td>175개</td><td class="dn">렌더 12개 적음</td></tr>
+                            <tr><td>평균</td><td>7.79</td><td>7.29</td><td class="dn">렌더 0.5 적음</td></tr>
+                            <tr><td>중앙값</td><td>7.5</td><td>8.0</td><td class="up">렌더 0.5 많음</td></tr>
+                        </table>
+                    </div>
+                    요약값 하나만 골라 봤다면 결론의 <em>방향</em>까지 틀렸을 수 있습니다.
+                </li>
+                <li>
+                    <strong>쌍으로 세면 방향이 분명합니다.</strong>
+                    렌더가 더 많이 찾은 쌍은 24번 중 <strong>단 1번</strong>(7→8)이고, 나머지는 줄거나 같습니다.
+                    한쪽으로 쏠려 있어 우연으로 보기 어렵습니다 —
+                    Wilcoxon 부호순위 검정 <span class="mono">p = 0.0049</span>.
+                </li>
+            </ol>
+
+            <p class="verdict">
+                <strong>결론.</strong> 3DGS 렌더는 실촬영보다 토마토를 <strong>체계적으로 덜 찾습니다</strong>
+                (6% 적음). 합성 이미지를 평가용으로 쓸 때 이 손실분을 감안해야 한다는 뜻입니다.
+                그리고 이 사실은 <strong>짝을 살려서 봐야만 드러납니다</strong>.
+            </p>
+
             <p class="hnote">
-                토마토 온실 씬을 3D Gaussian Splatting으로 재구성해 동일 카메라 pose의 실촬영·렌더에
-                같은 검출기를 돌린 24쌍 · Wilcoxon 부호순위 p = 0.0049 ·
-                데이터 <a href="https://github.com/leeyunhome/field2scene" target="_blank" rel="noopener">field2scene</a>
+                원본 영상은 <a href="https://www.pexels.com/video/tomato-farm-in-greenhouse-10179855/" target="_blank" rel="noopener">Pexels 공개 라이선스</a>(직접 촬영 아님) ·
+                재구성·렌더·검출 전 과정 재현 코드는
+                <a href="https://github.com/leeyunhome/field2scene" target="_blank" rel="noopener">field2scene</a> ·
+                검출기 YOLO-World("tomato" 프롬프트), conf≥0.10 · 개인 프로젝트이며 현장 운영 데이터가 아닙니다
             </p>
         </section>
 
