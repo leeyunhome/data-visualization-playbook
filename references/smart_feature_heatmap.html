@@ -1,0 +1,692 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>스마트 피처 히트맵 생성기 Pro</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- SheetJS for Excel / CSV Parsing -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <!-- Plotly.js for Interactive Heatmaps -->
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    <!-- Google Font: Inter & Noto Sans KR -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Noto+Sans+KR:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <style>
+        body {
+            font-family: 'Noto Sans KR', 'Inter', sans-serif;
+            background-color: #f8fafc;
+        }
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f5f9;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+        .drop-zone--over {
+            border-color: #4f46e5 !important;
+            background-color: #eef2ff !important;
+        }
+    </style>
+</head>
+<body class="text-slate-800 min-h-screen flex flex-col pb-12">
+
+    <header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+        <div class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between flex-wrap gap-3">
+            <div class="flex items-center space-x-3">
+                <div class="bg-indigo-600 text-white p-2.5 rounded-xl shadow-sm flex items-center justify-center">
+                    <i class="fa-solid fa-table-cells text-xl"></i>
+                </div>
+                <div>
+                    <div class="flex items-center space-x-2">
+                        <h1 class="text-lg font-bold text-slate-900 leading-tight">스마트 피처 히트맵 생성기</h1>
+                        <span class="bg-indigo-100 text-indigo-700 text-[11px] font-bold px-2 py-0.5 rounded-full">Pro</span>
+                    </div>
+                    <p class="text-xs text-slate-500">데이터 업로드부터 피처 선택 및 상관관계 시각화까지 한 번에</p>
+                </div>
+            </div>
+
+            <!-- Quick Sample Action Buttons (Lecture Mode) -->
+            <div class="flex items-center space-x-2">
+                <button id="btnSample1" class="px-3.5 py-1.5 text-xs font-medium bg-slate-100 hover:bg-indigo-50 text-slate-700 hover:text-indigo-600 rounded-lg border border-slate-200 transition flex items-center space-x-1.5">
+                    <i class="fa-solid fa-flask text-indigo-500"></i>
+                    <span>샘플 1 (요일 x 시간대 매트릭스)</span>
+                </button>
+                <button id="btnSample2" class="px-3.5 py-1.5 text-xs font-medium bg-slate-100 hover:bg-indigo-50 text-slate-700 hover:text-indigo-600 rounded-lg border border-slate-200 transition flex items-center space-x-1.5">
+                    <i class="fa-solid fa-chart-line text-amber-500"></i>
+                    <span>샘플 2 (상관계수)</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-6xl w-full mx-auto px-4 mt-6 space-y-6">
+
+        <!-- 1. File Upload Box -->
+        <section class="bg-white rounded-2xl p-6 shadow-sm border border-slate-200/80">
+            <div id="dropZone" class="border-2 border-dashed border-slate-300 rounded-xl p-8 text-center hover:border-indigo-500 hover:bg-indigo-50/20 transition cursor-pointer group">
+                <input type="file" id="fileInput" accept=".xlsx, .xls, .csv" class="hidden" />
+                <p class="text-sm font-medium text-slate-700 group-hover:text-indigo-600 transition">
+                    클릭하여 파일을 선택하거나 이곳으로 드래그 앤 드롭하세요
+                </p>
+                <p class="text-xs text-slate-400 mt-1">
+                    .xlsx, .xls, .csv 파일 지원 (시간대/요일 매트릭스, 원본 로그 등)
+                </p>
+            </div>
+
+            <div id="fileInfo" class="hidden mt-3 p-3 bg-indigo-50/60 rounded-xl border border-indigo-100 flex items-center justify-between text-xs">
+                <div class="flex items-center space-x-2">
+                    <i class="fa-solid fa-file-excel text-emerald-600 text-base"></i>
+                    <span id="fileName" class="font-bold text-slate-800">data.xlsx</span>
+                    <span id="fileRows" class="text-indigo-600 bg-white px-2 py-0.5 rounded border border-indigo-100 font-semibold">0행</span>
+                </div>
+                <div id="sheetSelectContainer" class="hidden flex items-center space-x-2">
+                    <label class="text-slate-600 font-medium">시트 선택:</label>
+                    <select id="sheetSelect" class="bg-white border border-slate-200 rounded px-2 py-1 outline-none text-xs font-semibold">
+                    </select>
+                </div>
+            </div>
+        </section>
+
+        <!-- 2. Feature Mapping & Options -->
+        <section id="configSection" class="bg-white rounded-2xl p-6 shadow-sm border border-slate-200/80 space-y-6 opacity-50 pointer-events-none transition-all">
+            
+            <!-- Analysis Mode Tab Header -->
+            <div class="flex items-center justify-between border-b border-slate-100 pb-4 flex-wrap gap-3">
+                <div class="flex items-center space-x-2">
+                    <i class="fa-solid fa-sliders text-indigo-600"></i>
+                    <h2 class="text-sm font-bold text-slate-900">2. 피처(Feature) 매핑 및 방식 설정</h2>
+                    <span class="text-xs text-slate-400">데이터 형태에 따라 축(X/Y) 및 집계 방식을 설정하세요.</span>
+                </div>
+
+                <div class="flex bg-slate-100 p-1 rounded-xl text-xs font-semibold space-x-1">
+                    <button id="modePivot" class="px-3.5 py-1.5 rounded-lg bg-indigo-600 text-white shadow-sm transition">
+                        로그 데이터 피벗 (행/열/값 선택)
+                    </button>
+                    <button id="modeRaw" class="px-3.5 py-1.5 rounded-lg text-slate-600 hover:bg-slate-200 transition">
+                        매트릭스 원본 (엑셀 표 형태)
+                    </button>
+                    <button id="modeCorr" class="px-3.5 py-1.5 rounded-lg text-slate-600 hover:bg-slate-200 transition">
+                        상관계수 분석
+                    </button>
+                </div>
+            </div>
+
+            <!-- Controls Panel: Pivot Mode -->
+            <div id="panelPivot" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div>
+                    <label class="text-xs font-bold text-slate-700 block mb-1.5 flex items-center">
+                        <i class="fa-solid fa-list-ul mr-1 text-slate-400"></i> Y축 피처 (행 - 예: 요일, 카테고리)
+                    </label>
+                    <select id="pivotYSelect" class="w-full text-xs bg-slate-50 border border-slate-200 rounded-xl p-2.5 font-medium focus:ring-2 focus:ring-indigo-500 outline-none">
+                    </select>
+                </div>
+                <div>
+                    <label class="text-xs font-bold text-slate-700 block mb-1.5 flex items-center">
+                        <i class="fa-solid fa-columns mr-1 text-slate-400"></i> X축 피처 (열 - 예: 시간대, 항목)
+                    </label>
+                    <select id="pivotXSelect" class="w-full text-xs bg-slate-50 border border-slate-200 rounded-xl p-2.5 font-medium focus:ring-2 focus:ring-indigo-500 outline-none">
+                    </select>
+                </div>
+                <div>
+                    <label class="text-xs font-bold text-slate-700 block mb-1.5 flex items-center">
+                        <i class="fa-solid fa-hashtag mr-1 text-slate-400"></i> 값 피처 (Metric - 수치)
+                    </label>
+                    <select id="pivotValSelect" class="w-full text-xs bg-slate-50 border border-slate-200 rounded-xl p-2.5 font-medium focus:ring-2 focus:ring-indigo-500 outline-none">
+                    </select>
+                </div>
+                <div>
+                    <label class="text-xs font-bold text-slate-700 block mb-1.5 flex items-center">
+                        <i class="fa-solid fa-calculator mr-1 text-slate-400"></i> 집계 연산 방식
+                    </label>
+                    <select id="pivotAggSelect" class="w-full text-xs bg-slate-50 border border-slate-200 rounded-xl p-2.5 font-medium focus:ring-2 focus:ring-indigo-500 outline-none">
+                        <option value="sum" selected>합계 (Sum)</option>
+                        <option value="mean">평균 (Mean)</option>
+                        <option value="count">개수 (Count)</option>
+                        <option value="min">최소 (Min)</option>
+                        <option value="max">최대 (Max)</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Controls Panel: Multi Feature Checkboxes (Correlation & Raw Mode) -->
+            <div id="panelFeatures" class="hidden space-y-2">
+                <div class="flex items-center justify-between">
+                    <span class="text-xs font-bold text-slate-700">분석 변수 (Feature) 선택</span>
+                    <div class="space-x-2 text-xs">
+                        <button id="btnSelectAll" class="text-indigo-600 font-semibold hover:underline">전체 선택</button>
+                        <span class="text-slate-300">|</span>
+                        <button id="btnDeselectAll" class="text-slate-500 hover:underline">해제</button>
+                    </div>
+                </div>
+                <div id="featureListContainer" class="flex flex-wrap gap-2 max-h-36 overflow-y-auto p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs">
+                </div>
+            </div>
+
+            <!-- Style Customization Options -->
+            <div class="pt-4 border-t border-slate-100 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 items-center">
+                <div>
+                    <label class="text-xs font-bold text-slate-700 block mb-1.5">컬러 팔레트</label>
+                    <select id="paletteSelect" class="w-full text-xs bg-slate-50 border border-slate-200 rounded-xl p-2.5 font-medium focus:ring-2 focus:ring-indigo-500 outline-none">
+                        <option value="YlOrRd" selected>엑셀 워밍 (Yellow - Orange - Red)</option>
+                        <option value="RdBu">RdBu (Red - White - Blue)</option>
+                        <option value="Viridis">Viridis (Purple - Teal - Yellow)</option>
+                        <option value="Blues">Blues (Single Blue Scale)</option>
+                        <option value="Reds">Reds (Single Red Scale)</option>
+                        <option value="Greens">Greens (Single Green Scale)</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="text-xs font-bold text-slate-700 block mb-1.5">셀 수치 폰트 크기</label>
+                    <select id="fontSizeSelect" class="w-full text-xs bg-slate-50 border border-slate-200 rounded-xl p-2.5 font-medium focus:ring-2 focus:ring-indigo-500 outline-none">
+                        <option value="10">작게 (10px)</option>
+                        <option value="12" selected>보통 (12px)</option>
+                        <option value="14">크게 (14px)</option>
+                    </select>
+                </div>
+
+                <div class="flex items-center space-x-2 pt-5">
+                    <input type="checkbox" id="chkShowAnnotations" checked class="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300">
+                    <label for="chkShowAnnotations" class="text-xs font-bold text-slate-700 cursor-pointer">셀 수치(값) 표시</label>
+                </div>
+
+                <div class="flex items-center space-x-2 pt-5">
+                    <input type="checkbox" id="chkShowGrid" checked class="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300">
+                    <label for="chkShowGrid" class="text-xs font-bold text-slate-700 cursor-pointer">격자 테두리 표시</label>
+                </div>
+            </div>
+
+        </section>
+
+        <!-- 3. Heatmap Display Output -->
+        <section id="chartSection" class="bg-white rounded-2xl p-6 shadow-sm border border-slate-200/80">
+            <!-- Heatmap Title & Actions Header -->
+            <div class="flex items-center justify-between mb-4 flex-wrap gap-2 pb-3 border-b border-slate-100">
+                <div class="flex items-center space-x-2">
+                    <div class="w-3 h-3 rounded-full bg-indigo-600"></div>
+                    <h3 id="chartTitle" class="text-base font-bold text-slate-900">
+                        요일 × 시간대 (방문자 수 SUM)
+                    </h3>
+                </div>
+
+                <div class="flex items-center space-x-2">
+                    <button id="btnExportPNG" class="px-3 py-1.5 text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition flex items-center space-x-1.5">
+                        <i class="fa-solid fa-download text-indigo-600"></i>
+                        <span>이미지 저장 (PNG)</span>
+                    </button>
+                    <button id="btnExportCSV" class="px-3 py-1.5 text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition flex items-center space-x-1.5">
+                        <i class="fa-solid fa-file-csv text-emerald-600"></i>
+                        <span>피벗 매트릭스 CSV 다운로드</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Plotly Container -->
+            <div id="plotlyChart" class="w-full h-[520px]">
+                <div class="h-full flex flex-col items-center justify-center text-slate-400 border-2 border-dashed border-slate-100 rounded-xl p-8">
+                    <i class="fa-solid fa-fire text-4xl mb-3 text-indigo-200"></i>
+                    <p class="text-sm font-semibold text-slate-600">상단의 샘플 데이터 버튼을 누르거나 파일을 업로드하세요</p>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <script>
+        // Global App State
+        const state = {
+            workbook: null,
+            rawData: [],
+            columns: [],
+            numericColumns: [],
+            activeMode: 'pivot', // 'pivot', 'raw', 'corr'
+            currentMatrix: null // { x: [], y: [], z: [][] }
+        };
+
+        // DOM Element Cache
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+        const fileInfo = document.getElementById('fileInfo');
+        const fileName = document.getElementById('fileName');
+        const fileRows = document.getElementById('fileRows');
+        const sheetSelectContainer = document.getElementById('sheetSelectContainer');
+        const sheetSelect = document.getElementById('sheetSelect');
+        const configSection = document.getElementById('configSection');
+
+        // Mode Tab Buttons
+        const modePivot = document.getElementById('modePivot');
+        const modeRaw = document.getElementById('modeRaw');
+        const modeCorr = document.getElementById('modeCorr');
+
+        // Mode Panels
+        const panelPivot = document.getElementById('panelPivot');
+        const panelFeatures = document.getElementById('panelFeatures');
+        const featureListContainer = document.getElementById('featureListContainer');
+
+        // Pivot Select Inputs
+        const pivotYSelect = document.getElementById('pivotYSelect');
+        const pivotXSelect = document.getElementById('pivotXSelect');
+        const pivotValSelect = document.getElementById('pivotValSelect');
+        const pivotAggSelect = document.getElementById('pivotAggSelect');
+
+        // Style Inputs
+        const paletteSelect = document.getElementById('paletteSelect');
+        const fontSizeSelect = document.getElementById('fontSizeSelect');
+        const chkShowAnnotations = document.getElementById('chkShowAnnotations');
+        const chkShowGrid = document.getElementById('chkShowGrid');
+
+        // Output Controls
+        const chartTitle = document.getElementById('chartTitle');
+        const btnExportPNG = document.getElementById('btnExportPNG');
+        const btnExportCSV = document.getElementById('btnExportCSV');
+
+        // Event Listeners for File Drag & Drop
+        dropZone.addEventListener('click', () => fileInput.click());
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('drop-zone--over');
+        });
+        ['dragleave', 'dragend'].forEach(type => {
+            dropZone.addEventListener(type, () => dropZone.classList.remove('drop-zone--over'));
+        });
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('drop-zone--over');
+            if (e.dataTransfer.files.length) handleFileUpload(e.dataTransfer.files[0]);
+        });
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length) handleFileUpload(e.target.files[0]);
+        });
+
+        // Sample Data Loaders (Lecture Exact Match)
+        document.getElementById('btnSample1').addEventListener('click', loadSample1);
+        document.getElementById('btnSample2').addEventListener('click', loadSample2);
+
+        // Mode Switch Handlers
+        modePivot.addEventListener('click', () => switchMode('pivot'));
+        modeRaw.addEventListener('click', () => switchMode('raw'));
+        modeCorr.addEventListener('click', () => switchMode('corr'));
+
+        // Auto Redraw Events
+        [pivotYSelect, pivotXSelect, pivotValSelect, pivotAggSelect, paletteSelect, fontSizeSelect, chkShowAnnotations, chkShowGrid].forEach(el => {
+            el.addEventListener('change', () => renderHeatmap());
+        });
+
+        // File Handler
+        function handleFileUpload(file) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    state.workbook = XLSX.read(data, { type: 'array' });
+                    
+                    sheetSelect.innerHTML = '';
+                    state.workbook.SheetNames.forEach(s => {
+                        const opt = document.createElement('option');
+                        opt.value = s;
+                        opt.textContent = s;
+                        sheetSelect.appendChild(opt);
+                    });
+
+                    sheetSelectContainer.classList.toggle('hidden', state.workbook.SheetNames.length <= 1);
+                    fileName.textContent = file.name;
+                    fileInfo.classList.remove('hidden');
+
+                    loadSheetData(state.workbook.SheetNames[0]);
+                } catch (err) {
+                    alert('파일 처리 중 오류 발생: ' + err.message);
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        function loadSheetData(sheetName) {
+            const worksheet = state.workbook.Sheets[sheetName];
+            const json = XLSX.utils.sheet_to_json(worksheet, { defval: null });
+            if (!json || json.length === 0) return;
+
+            state.rawData = json;
+            state.columns = Object.keys(json[0] || {});
+            state.numericColumns = state.columns.filter(col => json.some(r => r[col] !== null && !isNaN(Number(r[col]))));
+
+            fileRows.textContent = `${json.length.toLocaleString()}행`;
+            configSection.classList.remove('opacity-50', 'pointer-events-none');
+
+            populateDropdowns();
+            renderFeatureCheckboxes();
+            renderHeatmap();
+        }
+
+        // Mode Switching UI Logic
+        function switchMode(mode) {
+            state.activeMode = mode;
+            
+            // Tab styling
+            [modePivot, modeRaw, modeCorr].forEach(b => {
+                b.className = 'px-3.5 py-1.5 rounded-lg text-slate-600 hover:bg-slate-200 transition';
+            });
+
+            if (mode === 'pivot') {
+                modePivot.className = 'px-3.5 py-1.5 rounded-lg bg-indigo-600 text-white shadow-sm transition';
+                panelPivot.classList.remove('hidden');
+                panelFeatures.classList.add('hidden');
+            } else if (mode === 'raw') {
+                modeRaw.className = 'px-3.5 py-1.5 rounded-lg bg-indigo-600 text-white shadow-sm transition';
+                panelPivot.classList.add('hidden');
+                panelFeatures.classList.remove('hidden');
+            } else { // corr
+                modeCorr.className = 'px-3.5 py-1.5 rounded-lg bg-indigo-600 text-white shadow-sm transition';
+                panelPivot.classList.add('hidden');
+                panelFeatures.classList.remove('hidden');
+            }
+
+            renderHeatmap();
+        }
+
+        function populateDropdowns() {
+            pivotYSelect.innerHTML = '';
+            pivotXSelect.innerHTML = '';
+            pivotValSelect.innerHTML = '';
+
+            state.columns.forEach((c, idx) => {
+                pivotYSelect.appendChild(new Option(c, c, false, idx === 0));
+                pivotXSelect.appendChild(new Option(c, c, false, idx === Math.min(1, state.columns.length - 1)));
+            });
+
+            state.numericColumns.forEach((c, idx) => {
+                pivotValSelect.appendChild(new Option(c, c, false, idx === 0));
+            });
+        }
+
+        function renderFeatureCheckboxes() {
+            featureListContainer.innerHTML = '';
+            state.numericColumns.forEach((col, idx) => {
+                const label = document.createElement('label');
+                label.className = 'flex items-center space-x-1.5 bg-white border border-slate-200 px-2.5 py-1 rounded-lg cursor-pointer hover:bg-indigo-50 transition';
+                label.innerHTML = `
+                    <input type="checkbox" value="${escapeHtml(col)}" ${idx < 6 ? 'checked' : ''} class="feature-cb rounded text-indigo-600">
+                    <span class="font-medium text-slate-700">${escapeHtml(col)}</span>
+                `;
+                label.querySelector('input').addEventListener('change', () => renderHeatmap());
+                featureListContainer.appendChild(label);
+            });
+        }
+
+        document.getElementById('btnSelectAll').addEventListener('click', () => {
+            document.querySelectorAll('.feature-cb').forEach(cb => cb.checked = true);
+            renderHeatmap();
+        });
+        document.getElementById('btnDeselectAll').addEventListener('click', () => {
+            document.querySelectorAll('.feature-cb').forEach(cb => cb.checked = false);
+            renderHeatmap();
+        });
+
+        function renderHeatmap() {
+            if (!state.rawData || state.rawData.length === 0) return;
+
+            const paletteKey = paletteSelect.value;
+            const fontSize = parseInt(fontSizeSelect.value, 10);
+            const showValue = chkShowAnnotations.checked;
+            const showGrid = chkShowGrid.checked;
+
+            let xLabels = [], yLabels = [], zData = [];
+            let titleText = '';
+
+            if (state.activeMode === 'pivot') {
+                const yCol = pivotYSelect.value;
+                const xCol = pivotXSelect.value;
+                const valCol = pivotValSelect.value;
+                const agg = pivotAggSelect.value;
+
+                if (!yCol || !xCol || !valCol) return;
+
+                xLabels = Array.from(new Set(state.rawData.map(r => String(r[xCol] ?? 'N/A'))));
+                yLabels = Array.from(new Set(state.rawData.map(r => String(r[yCol] ?? 'N/A'))));
+
+                zData = yLabels.map(yVal => {
+                    return xLabels.map(xVal => {
+                        const rows = state.rawData.filter(r => String(r[xCol] ?? 'N/A') === xVal && String(r[yCol] ?? 'N/A') === yVal);
+                        const vals = rows.map(r => Number(r[valCol])).filter(v => !isNaN(v));
+
+                        if (vals.length === 0) return 0;
+                        if (agg === 'sum') return vals.reduce((a, b) => a + b, 0);
+                        if (agg === 'mean') return vals.reduce((a, b) => a + b, 0) / vals.length;
+                        if (agg === 'count') return vals.length;
+                        if (agg === 'min') return Math.min(...vals);
+                        if (agg === 'max') return Math.max(...vals);
+                        return 0;
+                    });
+                });
+
+                titleText = `${yCol} × ${xCol} (${valCol} ${agg.toUpperCase()})`;
+
+            } else if (state.activeMode === 'corr') {
+                const checked = Array.from(document.querySelectorAll('.feature-cb:checked')).map(cb => cb.value);
+                if (checked.length < 2) return;
+
+                xLabels = checked;
+                yLabels = checked;
+                zData = calculateCorrelationMatrix(state.rawData, checked);
+                titleText = `피처 간 상관관계 매트릭스 (Pearson Correlation)`;
+
+            } else if (state.activeMode === 'raw') {
+                const checked = Array.from(document.querySelectorAll('.feature-cb:checked')).map(cb => cb.value);
+                if (checked.length === 0) return;
+
+                xLabels = checked;
+                yLabels = state.rawData.map((_, i) => `행 ${i + 1}`);
+                zData = state.rawData.map(row => checked.map(c => Number(row[c]) || 0));
+                titleText = `데이터 원본 매트릭스 시각화`;
+            }
+
+            state.currentMatrix = { x: xLabels, y: yLabels, z: zData };
+            chartTitle.textContent = titleText;
+
+            // Calculate min & max for normalized color contrast & custom scales
+            let flatVals = zData.flat().filter(v => !isNaN(v));
+            let minVal = Math.min(...flatVals);
+            let maxVal = Math.max(...flatVals);
+            let range = maxVal - minVal || 1;
+
+            // Lecture exact match color scale for 'YlOrRd' (Excel Warm)
+            let colorscale = paletteKey;
+            if (paletteKey === 'YlOrRd') {
+                colorscale = [
+                    [0.0, '#fff7ec'],
+                    [0.15, '#fee8c8'],
+                    [0.3, '#fdd49e'],
+                    [0.45, '#fdbb84'],
+                    [0.6, '#fc8d59'],
+                    [0.75, '#ef6548'],
+                    [0.9, '#d7301f'],
+                    [1.0, '#7f0000']
+                ];
+            }
+
+            // Cell text annotations with contrast awareness (White on Dark, Black on Light)
+            let annotations = [];
+            if (showValue) {
+                for (let i = 0; i < yLabels.length; i++) {
+                    for (let j = 0; j < xLabels.length; j++) {
+                        const val = zData[i][j];
+                        const norm = (val - minVal) / range; // 0.0 to 1.0
+
+                        // Dynamic text color matching lecture screen
+                        const textColor = norm > 0.62 ? '#ffffff' : '#0f172a';
+
+                        annotations.push({
+                            x: xLabels[j],
+                            y: yLabels[i],
+                            text: Number.isInteger(val) ? String(val) : val.toFixed(1),
+                            font: { 
+                                family: 'Inter, Noto Sans KR, sans-serif', 
+                                size: fontSize, 
+                                color: textColor,
+                                weight: 600
+                            },
+                            showarrow: false
+                        });
+                    }
+                }
+            }
+
+            const trace = {
+                z: zData,
+                x: xLabels,
+                y: yLabels,
+                type: 'heatmap',
+                colorscale: colorscale,
+                showscale: true,
+                xgap: showGrid ? 1.5 : 0,
+                ygap: showGrid ? 1.5 : 0,
+                hovertemplate: '<b>%{y} - %{x}</b><br>수치: <b>%{z}</b><extra></extra>',
+                colorbar: {
+                    orientation: 'h',
+                    y: -0.22,
+                    thickness: 14,
+                    len: 0.5,
+                    tickfont: { size: 11, color: '#64748b' }
+                }
+            };
+
+            const layout = {
+                annotations: annotations,
+                margin: { l: 70, r: 40, b: 90, t: 20 },
+                xaxis: { tickangle: -45, automargin: true, side: 'bottom', tickfont: { size: 11, weight: 600 } },
+                yaxis: { automargin: true, autorange: 'reversed', tickfont: { size: 12, weight: 600 } },
+                paper_bgcolor: 'transparent',
+                plot_bgcolor: 'transparent',
+                hoverlabel: {
+                    bgcolor: '#0f172a',
+                    bordercolor: '#334155',
+                    font: { family: 'Noto Sans KR', color: '#ffffff', size: 12 }
+                }
+            };
+
+            Plotly.newPlot('plotlyChart', [trace], layout, { responsive: true, displayModeBar: false });
+        }
+
+        // Pearson Correlation Logic
+        function calculateCorrelationMatrix(data, features) {
+            const n = features.length;
+            const matrix = Array.from({ length: n }, () => Array(n).fill(1));
+
+            for (let i = 0; i < n; i++) {
+                for (let j = i + 1; j < n; j++) {
+                    let sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0, sumY2 = 0, cnt = 0;
+                    data.forEach(r => {
+                        const x = Number(r[features[i]]), y = Number(r[features[j]]);
+                        if (!isNaN(x) && !isNaN(y)) {
+                            sumX += x; sumY += y; sumXY += x * y;
+                            sumX2 += x * x; sumY2 += y * y;
+                            cnt++;
+                        }
+                    });
+                    if (cnt > 0) {
+                        const num = (cnt * sumXY) - (sumX * sumY);
+                        const den = Math.sqrt(((cnt * sumX2) - (sumX * sumX)) * ((cnt * sumY2) - (sumY * sumY)));
+                        const corr = den === 0 ? 0 : num / den;
+                        matrix[i][j] = corr;
+                        matrix[j][i] = corr;
+                    }
+                }
+            }
+            return matrix;
+        }
+
+        // Sample Loaders
+        function loadSample1() {
+            const days = ['월', '화', '수', '목', '금', '토', '일'];
+            const hours = Array.from({ length: 24 }, (_, i) => `${String(i).padStart(2, '0')}:00`);
+            const sample = [];
+
+            days.forEach(day => {
+                hours.forEach(hour => {
+                    const base = (day === '토' || day === '일') ? 80 : 30;
+                    const peak = (parseInt(hour) >= 18 && parseInt(hour) <= 21) ? 60 : 10;
+                    sample.push({
+                        '요일': day,
+                        '시간대': hour,
+                        '방문자 수': Math.floor(base + peak + Math.random() * 25)
+                    });
+                });
+            });
+
+            loadSampleData(sample, '샘플1_요일시간대_방문자수.xlsx');
+        }
+
+        function loadSample2() {
+            const sample = [];
+            for (let i = 1; i <= 60; i++) {
+                const sales = Math.floor(Math.random() * 80) + 20;
+                const adCost = Math.floor(sales * 0.7 + Math.random() * 15);
+                const satisfaction = Math.floor(sales * 0.5 + adCost * 0.3 + Math.random() * 10);
+                const churn = Math.max(5, Math.floor(100 - satisfaction * 0.8));
+                sample.push({
+                    '영업매출': sales,
+                    '광고비용': adCost,
+                    '고객만족도': satisfaction,
+                    '고객이탈률': churn
+                });
+            }
+
+            loadSampleData(sample, '샘플2_상관계수_데이터.xlsx');
+            switchMode('corr');
+        }
+
+        function loadSampleData(json, name) {
+            const ws = XLSX.utils.json_to_sheet(json);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'Sample');
+
+            state.workbook = wb;
+            fileName.textContent = name;
+            fileInfo.classList.remove('hidden');
+            sheetSelectContainer.classList.add('hidden');
+
+            loadSheetData('Sample');
+        }
+
+        // Export Actions
+        btnExportPNG.addEventListener('click', () => {
+            Plotly.downloadImage('plotlyChart', { format: 'png', width: 1000, height: 600, filename: 'smart_heatmap' });
+        });
+
+        btnExportCSV.addEventListener('click', () => {
+            if (!state.currentMatrix) return;
+            const { x, y, z } = state.currentMatrix;
+            let csv = 'Y/X,' + x.join(',') + '\n';
+            for (let i = 0; i < y.length; i++) {
+                csv += `"${y[i]}",` + z[i].join(',') + '\n';
+            }
+            const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'heatmap_matrix.csv';
+            a.click();
+            URL.revokeObjectURL(url);
+        });
+
+        function escapeHtml(str) {
+            return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        }
+
+        // Load Sample 1 by Default on Initial Load
+        window.onload = () => loadSample1();
+    </script>
+</body>
+</html>
